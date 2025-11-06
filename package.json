@@ -1,0 +1,39 @@
+{
+  "name": "ai24",
+  "version": "1.0.0",
+  "description": "Backend de AI24",
+  "main": "app.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon app.js",
+    "start": "node app.js"
+  },
+  "author": "Evan Galvez",
+  "license": "ISC",
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@google-cloud/storage": "^7.16.0",
+    "@stripe/stripe-js": "^7.9.0",
+    "axios": "^1.11.0",
+    "bcryptjs": "^3.0.2",
+    "cloudinary": "^2.6.1",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "fluent-ffmpeg": "^2.1.3",
+    "google-auth-library": "^10.3.0",
+    "json2csv": "^6.0.0-alpha.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.17.0",
+    "mongoose": "^8.19.1",
+    "multer": "^2.0.1",
+    "nodemailer": "^7.0.3",
+    "pdfmake": "^0.2.20",
+    "socket.io": "^4.8.1",
+    "stripe": "^18.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}

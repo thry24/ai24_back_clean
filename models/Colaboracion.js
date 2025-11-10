@@ -13,6 +13,8 @@ const colaboracionSchema = new mongoose.Schema(
 
     nombreColaborador: { type: String, required: true },
     colaboradorEmail: { type: String },
+    nombreAgente: { type: String },
+    agenteEmail: { type: String },
 
     propiedad: { type: mongoose.Schema.Types.ObjectId, ref: "Propiedad" },
     nombrePropiedad: { type: String },

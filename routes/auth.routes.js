@@ -5,6 +5,7 @@ const upload = require("../middlewares/upload.middleware");
 const { verifyToken } = require("../middlewares/authMiddleware");
 const authController = require("../controllers/auth.controller");
 
+
 router.get("/users", verifyToken, register.listUsers);
 router.get("/me", verifyToken, register.getUsuarioActual);
 router.get("/inmobiliaria", register.obtenerInmobiliaria);
@@ -17,6 +18,8 @@ router.post("/verify", register.verifyCode);
 router.post("/register", register.register);
 router.post("/login", register.login);
 router.put("/agentes/:id/disponibilidad", register.actualizarDisponibilidad);
+router.get('/agentes', register.obtenerAgentes);
+
 
 router.put('/tipo-cliente', authController.actualizarTipoCliente);
 

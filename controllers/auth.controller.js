@@ -40,7 +40,7 @@ exports.listUsers = async (req, res) => {
     }
 
     if (role) {
-      filter.role = role; // ej: 'agente' | 'inmobiliaria' | 'admin'
+      filter.rol = role; // ej: 'agente' | 'inmobiliaria' | 'admin'
     }
 
     const pageN = Math.max(parseInt(page, 10) || 1, 1);
@@ -48,8 +48,8 @@ exports.listUsers = async (req, res) => {
 
     const [items, total] = await Promise.all([
       User.find(filter)
-        .select("_id username email role fotoPerfil")
-        .sort({ username: 1 })
+        .select("_id nombre correo rol fotoPerfil")
+        .sort({ nombre: 1 })
         .skip((pageN - 1) * limitN)
         .limit(limitN)
         .lean(),
@@ -69,6 +69,19 @@ exports.listUsers = async (req, res) => {
   }
 };
 
+exports.obtenerAgentes = async (req, res) => {
+  try {
+    const agentes = await User.find({ rol: 'agente' })
+      .select('nombre correo  fotoPerfil telefono inmobiliaria'); // ⚡ devuelve solo campos útiles
+
+    res.status(200).json(agentes);
+    console.log('✅ Agentes encontrados:', agentes.length);
+
+  } catch (error) {
+    console.error('Error al obtener agentes:', error);
+    res.status(500).json({ message: 'Error al obtener agentes' });
+  }
+};
 
 exports.initRegister = async (req, res) => {
   const { nombre, correo, password, rol, telefono, inmobiliaria, firmaBase64 } =

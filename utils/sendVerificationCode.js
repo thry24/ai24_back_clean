@@ -71,5 +71,38 @@ async function sendVerificationCode({
   }
 }
 
+async function sendColaboracionNotificacion({
+  agenteEmail,
+  colaboradorNombre,
+  colaboradorEmail,
+  accion,
+  propiedad,
+}) {
+  try {
+    const accionTexto = accion === "aceptar" ? "aceptó" : "rechazó";
+    const color = accion === "aceptar" ? "#4caf50" : "#e74c3c";
 
-module.exports = { sendVerificationCode };
+    await transporter.sendMail({
+      from: `"Ai24 Colaboraciones" <${process.env.SMTP_USER}>`,
+      to: agenteEmail,
+      subject: `Tu colaboración fue ${accionTexto}`,
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; border-radius: 8px; background: #f8f9fb; border: 1px solid #ddd;">
+          <h2 style="color: ${color};">Colaboración ${accionTexto.toUpperCase()}</h2>
+          <p style="font-size: 15px;">
+            El usuario <strong>${colaboradorNombre}</strong> (${colaboradorEmail}) ha <b>${accionTexto}</b> tu colaboración
+            ${propiedad ? `para la propiedad <strong>${propiedad}</strong>` : ""}.
+          </p>
+          <p style="margin-top: 16px;">Ingresa a tu panel de Ai24 para ver más detalles.</p>
+          <hr style="margin: 20px 0;">
+          <p style="font-size: 12px; color: #888;">Este mensaje fue generado automáticamente por Ai24.</p>
+        </div>
+      `,
+    });
+
+    console.log(`✅ Correo enviado al agente principal: ${agenteEmail}`);
+  } catch (error) {
+    console.error("❌ Error al enviar correo de colaboración:", error.message);
+  }
+}
+module.exports = { sendVerificationCode, sendColaboracionNotificacion };

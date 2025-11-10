@@ -2,6 +2,7 @@ const Colaboracion = require("../models/Colaboracion");
 const User = require("../models/User");
 const Propiedad = require("../models/Propiedad");
 const Seguimiento = require("../models/Seguimiento");
+const { sendColaboracionNotificacion } = require("../utils/sendVerificationCode");
 
 exports.crearColaboracion = async (req, res) => {
   try {
@@ -39,13 +40,14 @@ exports.crearColaboracion = async (req, res) => {
     // 🔹 Buscar propiedad si fue seleccionada
     const propiedad = propiedadId ? await Propiedad.findById(propiedadId) : null;
 
-    // 🔹 Crear colaboración base
     const nuevaColaboracion = await Colaboracion.create({
       agentePrincipal: agente._id,
+      nombreAgente: agente.nombre || "Agente sin nombre",
+      agenteEmail: agente.correo,
       colaborador: colaborador?._id || null,
-      tipoColaboracion,
       nombreColaborador: colaboradorNombreFinal,
       colaboradorEmail: colaboradorEmail || null,
+      tipoColaboracion,
       propiedad: propiedad?._id || null,
       nombrePropiedad: propiedad?.clave || propiedad?.tipoPropiedad || "Sin nombre",
       imagenPropiedad: propiedad?.imagenPrincipal || "",
@@ -120,6 +122,99 @@ exports.actualizarEstadoColaboracion = async (req, res) => {
   res.json({ ok: true, message: 'Estado actualizado y métricas ajustadas', colaboracion: colab });
 };
 
+exports.responderColaboracion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { accion } = req.body;
+    const email = (req.user?.correo || req.user?.email || "").toLowerCase();
+
+    const colaboracion = await Colaboracion.findById(id)
+      .populate("agentePrincipal", "nombre apellidos correo")
+      .populate("colaborador", "nombre apellidos correo");
+
+    if (!colaboracion)
+      return res.status(404).json({ ok: false, message: "Colaboración no encontrada." });
+
+    // Solo el colaborador puede responder
+    if (colaboracion.colaboradorEmail?.toLowerCase() !== email) {
+      return res
+        .status(403)
+        .json({ ok: false, message: "No autorizado para responder esta colaboración." });
+    }
+
+    // Actualizar estado
+    if (accion === "aceptar") colaboracion.estado = "aceptada";
+    else if (accion === "rechazar") colaboracion.estado = "rechazada";
+    else return res.status(400).json({ ok: false, message: "Acción inválida." });
+
+    await colaboracion.save();
+
+    // 💌 Enviar correo al agente principal
+    const agenteEmail = colaboracion.agenteEmail || colaboracion.agentePrincipal?.correo;
+    const colaboradorNombre =
+      colaboracion.nombreColaborador ||
+      `${colaboracion.colaborador?.nombre || ""} ${colaboracion.colaborador?.apellidos || ""}`.trim();
+
+    if (agenteEmail) {
+      await sendColaboracionNotificacion({
+        agenteEmail,
+        colaboradorNombre,
+        colaboradorEmail: colaboracion.colaboradorEmail,
+        accion,
+        propiedad: colaboracion.nombrePropiedad,
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: `Colaboración ${colaboracion.estado}. Se notificó al agente principal.`,
+      colaboracion,
+    });
+  } catch (err) {
+    console.error("❌ Error al responder colaboración:", err);
+    res.status(500).json({ ok: false, message: "Error al responder colaboración." });
+  }
+};
+
+exports.obtenerTodas = async (req, res) => {
+  try {
+    const propiedades = await Property.find().lean();
+
+    const propiedadesConLeads = await Promise.all(
+      propiedades.map(async (p) => {
+        const propiedadId = p._id?.toString();
+
+        // Buscar todos los seguimientos relacionados a esa propiedad
+        const seguimientos = await Seguimiento.find({ propiedadId }).lean();
+
+        const leadsGenerados = seguimientos.length;
+        const leadsGanados = seguimientos.filter((s) =>
+          ['CERRADO', 'FIRMADO', 'CONTRATO', 'VENDIDA', 'RENTADA'].includes(
+            (s.estadoFinal || '').toUpperCase()
+          )
+        ).length;
+        const leadsPerdidos = seguimientos.filter((s) =>
+          ['CANCELADO', 'PERDIDO', 'NO CONCRETADO', 'DESCARTADO'].includes(
+            (s.estadoFinal || '').toUpperCase()
+          )
+        ).length;
+
+        return {
+          ...p,
+          leadsGenerados,
+          leadsGanados,
+          leadsPerdidos,
+        };
+      })
+    );
+
+    res.json(propiedadesConLeads);
+  } catch (error) {
+    console.error('Error al obtener propiedades:', error);
+    res.status(500).json({ error: 'Error al obtener propiedades' });
+  }
+};
+
 
 exports.obtenerPorAgente = async (req, res) => {
   try {
@@ -153,55 +248,99 @@ exports.obtenerPorAgente = async (req, res) => {
       colaboraciones.map(async (c) => {
         const propiedad = c.propiedad || {};
         const colaborador = c.colaborador || {};
+        const agentePrincipal = c.agentePrincipal || {};
 
-        // Leads
-        const leadsTotales = propiedad.contactosGenerados || 0;
-        const esGanada = ['vendida', 'rentada', 'con inquilino'].includes(
-          (propiedad.estadoPropiedad || '').toLowerCase()
-        );
-        const leadsGanados = esGanada ? 1 : 0;
-        const leadsPerdidos = leadsTotales > 0 ? leadsTotales - leadsGanados : 0;
+        // 🔹 Buscar seguimientos reales de esta propiedad
+        const seguimientos = await Seguimiento.find({ propiedadId: propiedad._id }).lean();
+
+        // 🔹 Calcular métricas reales
+        const leadsTotales = seguimientos.length;
+
+        const leadsGanados = seguimientos.filter((s) =>
+          ['CERRADO', 'FIRMADO', 'CONTRATO', 'VENDIDA', 'RENTADA', 'CONTRATO FIRMADO'].includes(
+            (s.estadoFinal || '').toUpperCase()
+          )
+        ).length;
+
+        const leadsPerdidos = seguimientos.filter((s) =>
+          ['CANCELADO', 'PERDIDO', 'NO CONCRETADO', 'DESCARTADO', 'SIN RESPUESTA'].includes(
+            (s.estadoFinal || '').toUpperCase()
+          )
+        ).length;
 
         // Conteo de agentes e inmobiliarias relacionadas
         let agentesInvolucrados = 0;
         if (propiedad.agente) agentesInvolucrados++;
         if (propiedad.inmobiliaria) agentesInvolucrados++;
 
-        return {
-          _id: c._id,
-          // --- Propiedad ---
-          nombrePropiedad: propiedad.clave || c.nombrePropiedad || 'Sin clave',
-          tipoPropiedad: propiedad.tipoPropiedad || 'Sin tipo',
-          imagenPropiedad:
-            propiedad.imagenPrincipal ||
-            c.imagenPropiedad ||
-            'https://www.svgrepo.com/show/508699/home-4.svg',
-          fechaAlta: propiedad.fechaCreacion || c.createdAt, // 👈 aseguramos que se envía la fecha
+        // --- NUEVO: Agregar nombre del agente principal ---
+        const nombreAgente =
+          agentePrincipal.nombre ||
+          c.nombreAgente ||
+          'Agente sin nombre';
 
-          // --- Datos principales de la colaboración ---
-          tipoColaboracion: c.tipoColaboracion || '—',      // 👈 agrega tipo
-          comision: c.comision || 0,                         // 👈 agrega comisión
-          // --- Métricas ---
-          agentesInvolucrados,
-          leadsGenerados: leadsTotales,
-          leadsGanados,
-          leadsPerdidos,
-          // --- Colaborador ---
-          colaborador: {
-            nombre: colaborador.nombre || c.nombreColaborador || 'Sin nombre',
-            correo: colaborador.correo || c.colaboradorEmail || '—',
-            fotoPerfil:
-              colaborador.fotoPerfil ||
-              'https://www.svgrepo.com/show/452030/avatar-default.svg',
-          },
-          // --- Extras ---
-          tipoOperacion: c.tipoOperacion || propiedad.tipoOperacion || '—',
-          estado: c.estado || 'pendiente',
-        };
+        // --- NUEVO: nombre visible dinámico (para quien consulta) ---
+        const soyAgente = agentePrincipal.correo?.toLowerCase() === email;
+        const nombreVisible = soyAgente
+          ? (colaborador.nombre || c.nombreColaborador || 'Colaborador')
+          : nombreAgente;
+            return {
+              _id: c._id,
+
+              // --- Propiedad ---
+              nombrePropiedad: propiedad.clave || c.nombrePropiedad || 'Sin clave',
+              tipoPropiedad: propiedad.tipoPropiedad || 'Sin tipo',
+              imagenPropiedad:
+                propiedad.imagenPrincipal ||
+                'https://www.svgrepo.com/show/508699/home-4.svg',
+              fechaAlta: propiedad.fechaCreacion || c.createdAt,
+
+              // --- Datos principales ---
+              tipoColaboracion: c.tipoColaboracion || '—',
+              comision: c.comision || 0,
+              tipoOperacion: c.tipoOperacion || propiedad.tipoOperacion || '—',
+              estado: c.estado || 'pendiente',
+
+              // --- Métricas ---
+              agentesInvolucrados,
+              leadsGenerados: leadsTotales,
+              leadsGanados,
+              leadsPerdidos,
+
+              // --- Participantes ---
+              colaborador: {
+                nombre: colaborador.nombre || c.nombreColaborador || 'Sin nombre',
+                correo: colaborador.correo || c.colaboradorEmail || '—',
+                fotoPerfil:
+                  colaborador.fotoPerfil ||
+                  'https://www.svgrepo.com/show/452030/avatar-default.svg',
+              },
+              agentePrincipal: {
+                nombre: nombreAgente,
+                correo: agentePrincipal.correo || '—',
+                fotoPerfil:
+                  agentePrincipal.fotoPerfil ||
+                  'https://www.svgrepo.com/show/452030/avatar-default.svg',
+              },
+
+              // --- NUEVO: campos para el frontend ---
+              agentePrincipalNombre: nombreAgente,
+              agentePrincipalFoto:
+                agentePrincipal.fotoPerfil ||
+                'https://www.svgrepo.com/show/452030/avatar-default.svg',
+              nombreColaborador:
+                colaborador.nombre || c.nombreColaborador || 'Sin nombre',
+              colaboradorFoto:
+                colaborador.fotoPerfil ||
+                'https://www.svgrepo.com/show/452030/avatar-default.svg',
+
+              nombreAgente,
+              nombreVisible,
+            };
       })
     );
 
-    // Ordenar por fecha
+    // 🔹 Ordenar por fecha
     lista.sort(
       (a, b) => new Date(b.fechaAlta).getTime() - new Date(a.fechaAlta).getTime()
     );
@@ -212,7 +351,6 @@ exports.obtenerPorAgente = async (req, res) => {
     res.status(500).json({ ok: false, message: 'Error al cargar colaboraciones.' });
   }
 };
-
 
 
 // 🔹 Aceptar o rechazar colaboración

@@ -4,7 +4,7 @@ const EmailVerification = require("../models/EmailVerification");
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: parseInt(process.env.SMTP_PORT),
-  secure: true,
+  secure: false,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -50,7 +50,7 @@ async function sendVerificationCode({
     );
 
     await transporter.sendMail({
-      from: `"Verificación Ai24" <${process.env.SMTP_USER}>`,
+      from: `"Verificación Thry24" <${process.env.SMTP_USER}>`,
       to: email,
       subject: "Código de verificación de correo",
       html: `

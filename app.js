@@ -1,5 +1,11 @@
 const express = require("express");
 const cors = require("cors");
+const allowedOrigins = [
+  "https://thry24.com",
+  "https://www.thry24.com",
+  "http://localhost:8100"
+];
+
 require("dotenv").config();
 const path = require("path");
 
@@ -25,8 +31,18 @@ const http = require("http");
 const { Server } = require("socket.io");
 
 const app = express();
-
-app.use(cors());
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Permite apps móviles / ionic / postman
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS bloqueado por seguridad"), false);
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  })
+);
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 

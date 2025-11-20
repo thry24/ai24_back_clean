@@ -40,7 +40,7 @@ async function sendVerificationCode({
     );
 
     await resend.emails.send({
-      from: `Thry24 <contacto@thry24.com.mx>`,
+      from: `Thry24 <verificaciones@thry24.com`,
       to: email,
       subject: "Código de verificación de correo",
       html: `
@@ -70,7 +70,7 @@ async function sendColaboracionNotificacion({
     const color = accion === "aceptar" ? "#4caf50" : "#e74c3c";
 
     await resend.emails.send({
-      from: `Ai24 <contacto@thry24.com.mx>`,
+      from: `Ai24 <verificaciones@thry24.com>`,
       to: agenteEmail,
       subject: `Tu colaboración fue ${accionTexto}`,
       html: `

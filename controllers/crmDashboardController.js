@@ -5,6 +5,8 @@ const Propiedad = require('../models/Propiedad');
 const User = require('../models/User');
 const Objetivo = require('../models/Objetivo');
 const Seguimiento = require('../models/Seguimiento');
+const RelacionAgenteCliente = require('../models/RelacionAgenteCliente');
+
 
 /* ---------------------------- Helpers de fechas ---------------------------- */
 function rangeMes(year, month /* 1..12 */) {
@@ -339,5 +341,83 @@ exports.getDashboard = async (req, res) => {
   } catch (err) {
     console.error('getDashboard error:', err);
     res.status(500).json({ msg: 'Error interno al calcular dashboard' });
+  }
+};
+// 🔥 Dashboard NIVEL INMOBILIARIA
+// Dashboard para inmobiliaria
+exports.getDashboardInmobiliaria = async (req, res) => {
+  try {
+    const inmobiliariaId = req.params.id;
+
+    if (!inmobiliariaId) {
+      return res.status(400).json({ msg: "ID inmobiliaria faltante" });
+    }
+
+    // Obtener asesores ligados a la inmobiliaria
+    const asesores = await User.find({
+      rol: "agente",
+      inmobiliaria: inmobiliariaId
+    }).lean();
+
+    // Si no tiene asesores, devolvemos lista vacía
+    if (!asesores.length) {
+      return res.json({ asesores: [] });
+    }
+
+    // Construir estadísticas por asesor
+    const asesoresStats = [];
+
+    for (const a of asesores) {
+      const propiedades = await Propiedad.find({ agente: a._id }).lean();
+
+      const ventas = propiedades.filter(p => p.estadoPropiedad === "vendida").length;
+      const rentas = propiedades.filter(p => p.estadoPropiedad === "rentada").length;
+
+      const total = ventas + rentas;
+
+      asesoresStats.push({
+        _id: a._id,
+        nombre: a.nombre,
+        img: a.img || "https://via.placeholder.com/40x40",
+        ventas,
+        rentas,
+        total
+      });
+    }
+
+    res.json({ asesores: asesoresStats });
+
+  } catch (err) {
+    console.error("getDashboardInmobiliaria error:", err);
+    res.status(500).json({ msg: "Error interno en dashboard inmobiliaria" });
+  }
+};
+exports.getSeguimientosAgente = async (req, res) => {
+  try {
+    const { agenteId } = req.params;
+    const filtro = req.query.filtro || "month";
+
+    const match = { agente: agenteId };
+
+    if (filtro === "day") {
+      match.fecha = { $gte: new Date(new Date().setHours(0,0,0,0)) };
+    } else if (filtro === "month") {
+      match.fecha = {
+        $gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+      };
+    } else if (filtro === "year") {
+      match.fecha = {
+        $gte: new Date(new Date().getFullYear(), 0, 1)
+      };
+    }
+
+    const seguimientos = await Seguimiento.find(match).sort({ fecha: -1 });
+
+    res.json({
+      ok: true,
+      seguimientos
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 };

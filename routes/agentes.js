@@ -1,0 +1,273 @@
+const express = require('express');
+const mongoose = require('mongoose');
+const User = require('../models/User');
+const Propiedad = require('../models/Propiedad');
+const Inmobiliaria = require('../models/inmobiliaria');
+const { generarPasswordSeguro, hashPassword } = require('../utils/password');
+const { enviarCredenciales } = require('../utils/mailer');
+
+const router = express.Router();
+
+/**
+ * Helper: validar plan de la inmobiliaria
+ */
+async function validarPlan(inmobiliariaId) {
+  const inmo = await Inmobiliaria.findById(inmobiliariaId);
+  if (!inmo) throw new Error("Inmobiliaria no encontrada");
+
+  const hoy = new Date();
+  if (hoy > inmo.plan.fechaFin) throw new Error("El plan de esta inmobiliaria ha expirado");
+  return inmo;
+}
+
+/**
+ * GET /api/agentes?inmobiliaria=<id>&q=<texto>&status=Active|Inactive
+ */
+router.get('/', async (req, res) => {
+  try {
+    const { inmobiliaria, q, status } = req.query;
+    const filter = { rol: 'agente' };
+
+    if (inmobiliaria && mongoose.isValidObjectId(inmobiliaria)) {
+      filter.inmobiliaria = inmobiliaria;
+    } else {
+      return res.json([]); // nada si no hay inmobiliaria
+    }
+
+    if (status) filter.status = status;
+
+    if (q && q.trim()) {
+      const r = new RegExp(q.trim(), 'i');
+      filter.$or = [{ nombre: r }, { correo: r }, { telefono: r }];
+    }
+
+    const agentes = await User.find(filter).lean();
+    res.json(agentes);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * POST /api/agentes
+ * Crea agente bajo una inmobiliaria, asigna password aleatoria y la envía por correo
+ */
+router.post('/', async (req, res) => {
+  try {
+    const { nombre, correo, telefono, inmobiliaria } = req.body;
+
+    if (!nombre || !correo || !inmobiliaria) {
+      return res.status(400).json({ error: 'nombre, correo e inmobiliaria son requeridos' });
+    }
+
+    // 🔹 Buscar la inmobiliaria REAL en BD
+    const inmo = await Inmobiliaria.findById(inmobiliaria);
+    if (!inmo) return res.status(404).json({ error: 'Inmobiliaria no encontrada' });
+
+    // 🔹 Revisar correo duplicado
+    const existente = await User.findOne({ correo });
+    if (existente) {
+      return res.status(400).json({ error: 'Ese correo ya existe' });
+    }
+
+    // 🔹 Generar contraseña temporal
+    const tempPass = generarPasswordSeguro();
+    const hashedPass = await hashPassword(tempPass);
+
+    // 🔹 Crear agente HEREDANDO el plan
+    const nuevo = await User.create({
+      nombre,
+      correo,
+      telefono,
+      rol: 'agente',
+      inmobiliaria: inmo._id,
+      status: 'Active',
+      password: hashedPass,
+
+      // 🔥 HEREDAR PLAN AUTOMÁTICAMENTE 🔥
+      planActivo: inmo.planActivo || false,
+      planExpira: inmo.planExpira || null,
+      tipoPlan: inmo.tipoPlan || 'sin-plan',
+    });
+
+    // 🔹 Enviar email con credenciales
+    await enviarCredenciales(
+      correo,
+      inmo.nombre,
+      correo,
+      tempPass
+    );
+
+    res.status(201).json(nuevo);
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
+/**
+ * PATCH /api/agentes/:id
+ */
+router.patch('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ error: 'id inválido' });
+
+    const updates = (({ nombre, telefono, correo, status, fotoPerfil }) =>
+      ({ nombre, telefono, correo, status, fotoPerfil }))(req.body);
+
+    const updated = await User.findOneAndUpdate(
+      { _id: id, rol: 'agente' },
+      updates,
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ error: 'Agente no encontrado' });
+    res.json(updated);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+/**
+ * DELETE /api/agentes/:id
+ */
+router.delete('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) return res.status(400).json({ error: 'id inválido' });
+
+    await User.deleteOne({ _id: id, rol: 'agente' });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+/**
+ * GET /api/agentes/list/:inmobiliariaId
+ * Devuelve la lista con métricas EXACTAS para el frontend de Mis Agentes
+ */
+router.get('/list/:inmobiliariaId', async (req, res) => {
+  try {
+    const { inmobiliariaId } = req.params;
+
+    if (!mongoose.isValidObjectId(inmobiliariaId)) {
+      return res.status(400).json({ error: 'ID inmobiliaria inválido' });
+    }
+
+    const agentes = await User.find({
+      rol: 'agente',
+      inmobiliaria: inmobiliariaId
+    })
+      .lean()
+      .select("nombre correo telefono fotoPerfil status createdAt");
+
+    // Obtener métricas
+    const props = await Propiedad.aggregate([
+      { $match: { inmobiliaria: new mongoose.Types.ObjectId(inmobiliariaId) } },
+      {
+        $group: {
+          _id: '$agente',
+          total: { $sum: 1 },
+          hab: { $sum: { $cond: [{ $in: ['$tipoPropiedad', ['casa', 'departamento', 'HABITACIONAL']] }, 1, 0] } },
+          com: { $sum: { $cond: [{ $in: ['$tipoPropiedad', ['bodega', 'local', 'COMERCIAL']] }, 1, 0] } },
+          cierres: { $sum: { $cond: [{ $in: ['$estadoPropiedad', ['CERRADO', 'VENDIDO', 'RENTADO']] }, 1, 0] } },
+        }
+      }
+    ]);
+
+    const propByAgent = Object.fromEntries(props.map(p => [String(p._id), p]));
+
+    const resultado = agentes.map(a => {
+      const m = propByAgent[String(a._id)] || { total: 0, hab: 0, com: 0, cierres: 0 };
+
+      return {
+        id: a._id,
+        avatar: a.fotoPerfil || `https://i.pravatar.cc/48?u=${encodeURIComponent(a.correo || a.nombre)}`,
+        nombre: a.nombre,
+        telefono: a.telefono || '',
+        correo: a.correo,
+        propsTotal: m.total,
+        propsHab: m.hab,
+        propsCom: m.com,
+        cierres: m.cierres,
+        antiguedad: humanAge(a.createdAt),
+        status: a.status || 'Active'
+      };
+    });
+
+    res.json(resultado);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error obteniendo agentes' });
+  }
+});
+
+/**
+ * GET /api/agentes/metrics?inmobiliaria=<id>
+ */
+router.get('/metrics', async (req, res) => {
+  try {
+    const { inmobiliaria } = req.query;
+    if (!inmobiliaria || !mongoose.isValidObjectId(inmobiliaria)) {
+      return res.status(400).json({ error: 'inmobiliaria requerida' });
+    }
+
+    const agentes = await User.find({ rol: 'agente', inmobiliaria }).lean();
+
+    const props = await Propiedad.aggregate([
+      { $match: { inmobiliaria: new mongoose.Types.ObjectId(inmobiliaria) } },
+      {
+        $group: {
+          _id: '$agente',
+          total: { $sum: 1 },
+          hab: { $sum: { $cond: [{ $in: ['$tipoPropiedad', ['casa', 'departamento', 'HABITACIONAL']] }, 1, 0] } },
+          com: { $sum: { $cond: [{ $in: ['$tipoPropiedad', ['bodega', 'local', 'COMERCIAL']] }, 1, 0] } },
+          cierres: { $sum: { $cond: [{ $in: ['$estadoPropiedad', ['CERRADO', 'VENDIDO', 'RENTADO']] }, 1, 0] } },
+        }
+      }
+    ]);
+
+    const propByAgent = Object.fromEntries(props.map(p => [String(p._id), p]));
+
+    const data = agentes.map(a => {
+      const m = propByAgent[String(a._id)] || { total: 0, hab: 0, com: 0, cierres: 0 };
+      const antiguedad = a.createdAt ? humanAge(a.createdAt) : '—';
+      return {
+        id: a._id,
+        avatar: a.fotoPerfil || `https://i.pravatar.cc/48?u=${encodeURIComponent(a.correo || a.nombre)}`,
+        nombre: a.nombre,
+        telefono: a.telefono || '',
+        correo: a.correo,
+        propsTotal: m.total,
+        propsHab: m.hab,
+        propsCom: m.com,
+        cierres: m.cierres,
+        antiguedad,
+        status: a.status || 'Active'
+      };
+    });
+
+    res.json(data);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * Helper: calcular antigüedad
+ */
+function humanAge(date) {
+  const d = new Date(date);
+  const diff = Date.now() - d.getTime();
+  const years = Math.floor(diff / (365 * 24 * 3600 * 1000));
+  if (years >= 1) return `${years} año${years > 1 ? 's' : ''}`;
+  const months = Math.floor(diff / (30 * 24 * 3600 * 1000));
+  if (months >= 1) return `${months} mes${months > 1 ? 'es' : ''}`;
+  const days = Math.floor(diff / (24 * 3600 * 1000));
+  return `${days} día${days !== 1 ? 's' : ''}`;
+}
+
+module.exports = router;

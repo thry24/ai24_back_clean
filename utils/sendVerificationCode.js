@@ -1,15 +1,5 @@
-const nodemailer = require("nodemailer");
 const EmailVerification = require("../models/EmailVerification");
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const { resend } = require("../config/resend");
 
 async function sendVerificationCode({
   nombre,
@@ -34,7 +24,7 @@ async function sendVerificationCode({
       apellidos,
       password,
       rol,
-      telefono: telefono,
+      telefono,
       verified: false,
     };
 
@@ -49,8 +39,8 @@ async function sendVerificationCode({
       { upsert: true, new: true }
     );
 
-    await transporter.sendMail({
-      from: `"Verificación Thry24" <${process.env.SMTP_USER}>`,
+    await resend.emails.send({
+      from: `Thry24 <contacto@thry24.com.mx>`,
       to: email,
       subject: "Código de verificación de correo",
       html: `
@@ -63,11 +53,8 @@ async function sendVerificationCode({
 
     return { success: true, message: "Código enviado al correo" };
   } catch (error) {
-    console.error("Error al enviar código de verificación:", error.message);
-    return {
-      success: false,
-      message: "Error al enviar el código. Inténtalo más tarde.",
-    };
+    console.error("Error enviando código:", error.message);
+    return { success: false, message: "Error al enviar correo" };
   }
 }
 
@@ -82,8 +69,8 @@ async function sendColaboracionNotificacion({
     const accionTexto = accion === "aceptar" ? "aceptó" : "rechazó";
     const color = accion === "aceptar" ? "#4caf50" : "#e74c3c";
 
-    await transporter.sendMail({
-      from: `"Ai24 Colaboraciones" <${process.env.SMTP_USER}>`,
+    await resend.emails.send({
+      from: `Ai24 <contacto@thry24.com.mx>`,
       to: agenteEmail,
       subject: `Tu colaboración fue ${accionTexto}`,
       html: `
@@ -94,15 +81,14 @@ async function sendColaboracionNotificacion({
             ${propiedad ? `para la propiedad <strong>${propiedad}</strong>` : ""}.
           </p>
           <p style="margin-top: 16px;">Ingresa a tu panel de Ai24 para ver más detalles.</p>
-          <hr style="margin: 20px 0;">
-          <p style="font-size: 12px; color: #888;">Este mensaje fue generado automáticamente por Ai24.</p>
         </div>
       `,
     });
 
-    console.log(`✅ Correo enviado al agente principal: ${agenteEmail}`);
+    console.log(`Correo enviado al agente: ${agenteEmail}`);
   } catch (error) {
-    console.error("❌ Error al enviar correo de colaboración:", error.message);
+    console.error("Error enviando correo:", error.message);
   }
 }
+
 module.exports = { sendVerificationCode, sendColaboracionNotificacion };

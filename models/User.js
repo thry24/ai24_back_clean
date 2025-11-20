@@ -34,7 +34,7 @@ const UserSchema = new mongoose.Schema(
     googleId: { type: String, index: true, sparse: true },
     picture: String,
     logo: { type: String },
-    inmobiliaria: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    inmobiliaria: { type: mongoose.Schema.Types.ObjectId, ref: "Inmobiliaria" },
 
     disponibilidad: [
       {

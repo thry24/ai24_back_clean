@@ -21,6 +21,7 @@ const chatRoutes = require("./routes/chatRoutes");
 const suscripcionesRoutes = require('./routes/suscripciones');
 const requerimientosRoutes = require('./routes/requerimientos.routes');
 const mensajesAgentesRoutes = require('./routes/mensajes-agentes.routes');
+const agentesRoutes = require('./routes/agentes');
 const WaveVideoRoutes = require('./routes/waveVideo.routes');
 const VideoGeneratorRoutes = require('./routes/videoGenerator');
 const seguimientoRoutes = require("./routes/seguimiento.routes");
@@ -67,6 +68,7 @@ app.use('/api/colaboraciones', ColaboracionesRoutes);
 app.use("/api/relaciones", require("./routes/relacion.routes"));
 app.use('/api', require('./routes/directorioRoutes'));
 app.use("/api/citas", citasRoutes);
+app.use('/api/agentes', agentesRoutes);
 
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));
 app.get("/", (req, res) => {

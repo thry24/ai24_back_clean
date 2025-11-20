@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { verifyToken } = require('../middlewares/authMiddleware');
 const ctrl = require('../controllers/crmDashboardController');
+const { getDashboardInmobiliaria } = require('../controllers/crmDashboardController');
 
 function attachUserId(req, res, next) {
   const u = req.user || {};
@@ -14,6 +15,16 @@ function attachUserId(req, res, next) {
 
 
 router.get('/crm/dashboard', verifyToken, ctrl.getDashboard);
+
+router.get(
+  '/crm/dashboard/inmobiliaria/:id',
+  verifyToken,
+  ctrl.getDashboardInmobiliaria
+);
+
+router.get("/crm/agentes/:agenteId/seguimientos", verifyToken, ctrl.getSeguimientosAgente);
+
+// 🔹 Objetivos
 router.get('/crm/objetivos', verifyToken, ctrl.getObjetivos);
 router.put('/crm/objetivos', verifyToken, ctrl.upsertObjetivo);
 

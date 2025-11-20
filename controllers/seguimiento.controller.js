@@ -148,3 +148,50 @@ exports.patchSeguimiento = async (req, res) => {
     return res.status(500).json({ message: "Error actualizando seguimiento" });
   }
 };
+// controllers/seguimientoController.js
+exports.getSeguimientosPorAgente = async (req, res) => {
+  try {
+    const agenteId = req.params.agenteId;
+
+    // Obtén email del agente (porque tu modelo usa agenteEmail, no id)
+    const agente = await User.findById(agenteId);
+    if (!agente) {
+      return res.status(404).json({ ok: false, msg: "Agente no encontrado" });
+    }
+
+    const seguimientos = await Seguimiento.find({
+      agenteEmail: agente.correo
+    });
+
+    res.json({ ok: true, seguimientos });
+
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ ok: false, msg: "Error obteniendo seguimientos" });
+  }
+};
+exports.getByInmobiliaria = async (req, res) => {
+  try {
+    const { inmobiliariaId } = req.params;
+
+    // 1. Obtener los agentes que pertenecen a esa inmobiliaria
+    const agentes = await User.find({ inmobiliaria: inmobiliariaId });
+
+    if (!agentes.length) {
+      return res.json({ seguimientos: [] });
+    }
+
+    const correos = agentes.map(a => a.correo);
+
+    // 2. Traer todos los seguimientos de esos agentes
+    const seguimientos = await Seguimiento.find({
+      agenteEmail: { $in: correos }
+    }).sort({ createdAt: -1 });
+
+    return res.json({ seguimientos });
+
+  } catch (error) {
+    console.error("Error obteniendo seguimientos:", error);
+    return res.status(500).json({ msg: "Error interno del servidor" });
+  }
+};

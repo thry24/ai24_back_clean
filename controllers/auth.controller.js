@@ -1,5 +1,6 @@
 const EmailVerification = require("../models/EmailVerification");
 const User = require("../models/User");
+const Inmobiliaria = require('../models/Inmobiliaria');
 const { sendVerificationCode } = require("../utils/sendVerificationCode");
 const jwt = require("jsonwebtoken");
 const { verifyGoogleIdToken } = require('../services/googleVerify');
@@ -174,6 +175,7 @@ exports.initRegister = async (req, res) => {
 
     console.log("Documento a guardar:");
     console.log(JSON.stringify(nuevoIntento, null, 2));
+    await EmailVerification.deleteMany({ correo });
 
     await nuevoIntento.save();
     await sendVerificationCode({ nombre, email: correo });
@@ -198,7 +200,7 @@ exports.verifyCode = async (req, res) => {
   const { correo, code } = req.body;
 
   try {
-    const verif = await EmailVerification.findOne({ correo });
+    const verif = await EmailVerification.findOne({ correo }).sort({ createdAt: -1 });
     if (!verif)
       return res
         .status(404)
@@ -222,7 +224,8 @@ exports.register = async (req, res) => {
   try {
     const { correo } = req.body;
 
-    const verif = await EmailVerification.findOne({ correo });
+    const verif = await EmailVerification.findOne({ correo }).sort({ createdAt: -1 });
+
 
     if (!verif || !verif.verified) {
       return res
@@ -235,6 +238,36 @@ exports.register = async (req, res) => {
       return res.status(400).json({ msg: "Este correo ya tiene una cuenta." });
     }
 
+    let inmobiliariaAsignada = null;
+
+    // ✅ 1. Si EL USUARIO SE REGISTRA COMO INMOBILIARIA → crear una
+    if (verif.rol === "inmobiliaria") {
+      const nuevaInmobiliaria = new Inmobiliaria({
+        nombre: verif.nombre,
+        correo: verif.correo,
+        telefono: verif.telefono,
+        direccion: "",
+        status: "Active",
+        tipoPlan: "gratis",
+        planActivo: false,
+        planExpira: null,
+      });
+
+      await nuevaInmobiliaria.save();
+      inmobiliariaAsignada = nuevaInmobiliaria._id;
+    }
+
+    // Si el rol es agente Y viene con inmobiliaria (agente interno)
+    if (verif.rol === "agente" && verif.inmobiliaria) {
+      inmobiliariaAsignada = verif.inmobiliaria;
+    }
+
+    // Si el agente se registró por su cuenta → independiente
+    if (verif.rol === "agente" && !verif.inmobiliaria) {
+      inmobiliariaAsignada = null;
+    }
+
+    // 🧩 Crear usuario final
     const nuevoUsuario = new User({
       nombre: verif.nombre,
       correo: verif.correo,
@@ -242,20 +275,18 @@ exports.register = async (req, res) => {
       rol: verif.rol,
       telefono: verif.telefono,
       firmaDigital: verif.firmaDigital,
-      inmobiliaria:
-        verif.rol === "agente" && verif.inmobiliaria
-          ? verif.inmobiliaria
-          : null,
-      fotoPerfil:
-        verif.rol === "agente" && verif.fotoPerfil
-          ? verif.fotoPerfil
-          : undefined,
-      logo: verif.rol === "inmobiliaria" && verif.logo ? verif.logo : undefined,
+      fotoPerfil: verif.fotoPerfil,
+      logo: verif.logo,
+      inmobiliaria: inmobiliariaAsignada,
+      tipoPlan: "gratis",
+      planActivo: false,
+      planExpira: null,
     });
 
     await nuevoUsuario.save();
     await EmailVerification.deleteOne({ correo });
 
+    // Generar token
     const token = jwt.sign(
       {
         id: nuevoUsuario._id,
@@ -275,6 +306,7 @@ exports.register = async (req, res) => {
     res.status(500).json({ msg: "Error interno del servidor." });
   }
 };
+
 
 exports.login = async (req, res) => {
   try {

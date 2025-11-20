@@ -15,7 +15,7 @@
     "@google-cloud/storage": "^7.16.0",
     "@stripe/stripe-js": "^7.9.0",
     "axios": "^1.11.0",
-    "bcryptjs": "^3.0.2",
+    "bcryptjs": "^3.0.3",
     "cloudinary": "^2.6.1",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
@@ -30,6 +30,7 @@
     "multer": "^2.0.1",
     "nodemailer": "^7.0.3",
     "pdfmake": "^0.2.20",
+    "resend": "^6.5.2",
     "socket.io": "^4.8.1",
     "stripe": "^18.5.0"
   },

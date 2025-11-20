@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const Propiedad = require('../models/Propiedad');
-const Inmobiliaria = require('../models/inmobiliaria');
+const Inmobiliaria = require('../models/Inmobiliaria');
 const { generarPasswordSeguro, hashPassword } = require('../utils/password');
 const { enviarCredenciales } = require('../utils/mailer');
 

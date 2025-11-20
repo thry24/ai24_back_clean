@@ -4,19 +4,36 @@ const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
 require("dotenv").config();
 
+// =============================================
+// 🔥 Cargar credenciales desde variable de entorno
+// =============================================
+let serviceAccount = null;
+
+try {
+  serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
+
+  // Reemplazar saltos de línea escapados en private_key
+  if (serviceAccount.private_key) {
+    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+  }
+} catch (err) {
+  console.error("❌ ERROR: GOOGLE_SERVICE_KEY no es un JSON válido.");
+  console.error(err);
+}
+
+// =============================================
+// 🚀 Inicializar Google Cloud Storage
+// =============================================
 const storage = new Storage({
-  keyFilename: path.join(__dirname, "../config/gleaming-plate-461914-i1-da1908c2933d.json"),
+  credentials: serviceAccount,
 });
 
 const bucketName = process.env.GCLOUD_BUCKET_NAME;
 const bucket = storage.bucket(bucketName);
 
-/**
- * Sube un archivo local a GCS
- * @param {string} filePath Ruta del archivo local (ej. './uploads/temp.jpg')
- * @param {string} folder Carpeta dentro del bucket (ej. 'ai24/agentes')
- * @returns {Promise<{ url: string, public_id: string }>}
- */
+// =============================================
+// 📌 Subir archivo desde ruta local
+// =============================================
 async function subirAGoogleStorage(filePath, folder = "uploads") {
   return new Promise((resolve, reject) => {
     const fileName = path.basename(filePath);
@@ -25,33 +42,23 @@ async function subirAGoogleStorage(filePath, folder = "uploads") {
 
     const stream = fileUpload.createWriteStream({
       resumable: false,
-      metadata: {
-        contentType: "auto",
-      },
+      metadata: { contentType: "auto" },
     });
 
     stream.on("error", (err) => reject(err));
 
     stream.on("finish", async () => {
-      try {
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
-        resolve({ url: publicUrl, public_id: destination });
-      } catch (err) {
-        reject(err);
-      }
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
+      resolve({ url: publicUrl, public_id: destination });
     });
 
     fs.createReadStream(filePath).pipe(stream);
   });
 }
 
-/**
- * Sube un buffer (por ejemplo, base64 convertido) directamente a GCS
- * @param {Buffer} buffer
- * @param {string} filename Nombre original o sugerido (ej. 'firma.png')
- * @param {string} folder Carpeta en el bucket (ej. 'ai24/firmas')
- * @returns {Promise<{ url: string, public_id: string }>}
- */
+// =============================================
+// 📌 Subir archivo desde Buffer (firma base64, etc.)
+// =============================================
 async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
   return new Promise((resolve, reject) => {
     const extension = path.extname(filename) || ".png";
@@ -60,9 +67,7 @@ async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
 
     const stream = file.createWriteStream({
       resumable: false,
-      metadata: {
-        contentType: "image/png",
-      },
+      metadata: { contentType: "image/png" },
     });
 
     stream.on("error", reject);
@@ -76,17 +81,16 @@ async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
   });
 }
 
-/**
- * Elimina un archivo del bucket de Google Cloud Storage
- * @param {string} publicId Ruta del archivo en el bucket (ej. 'ai24/agentes/1719293091234_foto.jpg')
- */
+// =============================================
+// 📌 Eliminar archivo del bucket
+// =============================================
 async function eliminarDeGoogleStorage(publicId) {
   try {
     const file = bucket.file(publicId);
     await file.delete();
-    console.log(`Archivo eliminado: ${publicId}`);
+    console.log(`✔ Archivo eliminado: ${publicId}`);
   } catch (error) {
-    console.error("Error al eliminar de Google Storage:", error.message);
+    console.error("❌ Error al eliminar de Google Storage:", error.message);
   }
 }
 

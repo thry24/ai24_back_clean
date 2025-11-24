@@ -30,6 +30,8 @@ const citasRoutes = require("./routes/citas.routes");
 const recorridosRoutes = require("./routes/recorridos");
 const http = require("http");
 const { Server } = require("socket.io");
+const kpisRoutes = require("./routes/kpis.routes");
+const comisionesRoutes = require("./routes/comisiones.routes");
 
 const app = express();
 app.use(
@@ -69,6 +71,10 @@ app.use("/api/relaciones", require("./routes/relacion.routes"));
 app.use('/api', require('./routes/directorioRoutes'));
 app.use("/api/citas", citasRoutes);
 app.use('/api/agentes', agentesRoutes);
+app.use("/api/kpis", require("./routes/kpis.routes"));
+app.use("/api/comisiones", comisionesRoutes);
+app.use("/api/productividad", require("./routes/productividad.routes"));
+
 
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));
 app.get("/", (req, res) => {

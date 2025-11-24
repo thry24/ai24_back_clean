@@ -156,6 +156,7 @@ router.get('/list/:inmobiliariaId', async (req, res) => {
       return res.status(400).json({ error: 'ID inmobiliaria inválido' });
     }
 
+    // 1️⃣ Traer agentes de esa inmobiliaria
     const agentes = await User.find({
       rol: 'agente',
       inmobiliaria: inmobiliariaId
@@ -163,28 +164,56 @@ router.get('/list/:inmobiliariaId', async (req, res) => {
       .lean()
       .select("nombre correo telefono fotoPerfil status createdAt");
 
-    // Obtener métricas
+    const idsAgentes = agentes.map(a => a._id);
+
+    // 2️⃣ Contar propiedades POR AGENTE (esto estaba mal en tu versión)
     const props = await Propiedad.aggregate([
-      { $match: { inmobiliaria: new mongoose.Types.ObjectId(inmobiliariaId) } },
+      { $match: { agente: { $in: idsAgentes } } },
       {
         $group: {
           _id: '$agente',
           total: { $sum: 1 },
-          hab: { $sum: { $cond: [{ $in: ['$tipoPropiedad', ['casa', 'departamento', 'HABITACIONAL']] }, 1, 0] } },
-          com: { $sum: { $cond: [{ $in: ['$tipoPropiedad', ['bodega', 'local', 'COMERCIAL']] }, 1, 0] } },
-          cierres: { $sum: { $cond: [{ $in: ['$estadoPropiedad', ['CERRADO', 'VENDIDO', 'RENTADO']] }, 1, 0] } },
+          hab: {
+            $sum: {
+              $cond: [
+                { $in: ['$tipoPropiedad', ['casa', 'departamento', 'habitacional', 'HABITACIONAL']] },
+                1,
+                0
+              ]
+            }
+          },
+          com: {
+            $sum: {
+              $cond: [
+                { $in: ['$tipoPropiedad', ['bodega', 'local', 'comercial', 'COMERCIAL']] },
+                1,
+                0
+              ]
+            }
+          },
+          cierres: {
+            $sum: {
+              $cond: [
+                { $in: ['$estadoPropiedad', ['CERRADO', 'VENDIDO', 'RENTADO']] },
+                1,
+                0
+              ]
+            }
+          },
         }
       }
     ]);
 
-    const propByAgent = Object.fromEntries(props.map(p => [String(p._id), p]));
+    const propsPorAgente = Object.fromEntries(props.map(p => [String(p._id), p]));
 
+    // 3️⃣ Formar salida final
     const resultado = agentes.map(a => {
-      const m = propByAgent[String(a._id)] || { total: 0, hab: 0, com: 0, cierres: 0 };
+      const m = propsPorAgente[String(a._id)] || { total: 0, hab: 0, com: 0, cierres: 0 };
 
       return {
         id: a._id,
-        avatar: a.fotoPerfil || `https://i.pravatar.cc/48?u=${encodeURIComponent(a.correo || a.nombre)}`,
+        avatar: a.fotoPerfil ||
+          `https://i.pravatar.cc/48?u=${encodeURIComponent(a.correo || a.nombre)}`,
         nombre: a.nombre,
         telefono: a.telefono || '',
         correo: a.correo,
@@ -204,6 +233,7 @@ router.get('/list/:inmobiliariaId', async (req, res) => {
     res.status(500).json({ error: 'Error obteniendo agentes' });
   }
 });
+
 
 /**
  * GET /api/agentes/metrics?inmobiliaria=<id>
@@ -269,5 +299,6 @@ function humanAge(date) {
   const days = Math.floor(diff / (24 * 3600 * 1000));
   return `${days} día${days !== 1 ? 's' : ''}`;
 }
+
 
 module.exports = router;

@@ -19,7 +19,7 @@ exports.verifyToken = async (req, res, next) => {
     }
 
     // Traemos el usuario para obtener correo/email reales
-    const user = await User.findById(decoded.id).select("correo email rol nombre fotoPerfil username");
+    const user = await User.findById(decoded.id).select("correo email rol nombre fotoPerfil username inmobiliaria");
     if (!user) {
       return res.status(401).json({ msg: "Usuario no encontrado." });
     }
@@ -33,6 +33,7 @@ exports.verifyToken = async (req, res, next) => {
       correo: correo,
       username: user.username,
       fotoPerfil: user.fotoPerfil,
+      inmobiliaria: user.inmobiliaria ?? null,
     };
 
     next();

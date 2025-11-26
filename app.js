@@ -74,6 +74,7 @@ app.use('/api/agentes', agentesRoutes);
 app.use("/api/kpis", require("./routes/kpis.routes"));
 app.use("/api/comisiones", comisionesRoutes);
 app.use("/api/productividad", require("./routes/productividad.routes"));
+app.use("/api/inmobiliaria", require("./routes/inmobiliaria.routes"));
 
 
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));

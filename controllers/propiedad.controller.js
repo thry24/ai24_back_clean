@@ -790,3 +790,37 @@ Hola, me interesa la propiedad ${prop.clave || prop._id}.
 };
 
 
+// =============================================
+// 🔥 OBTENER PROPIEDADES POR INMOBILIARIA (POR AGENTES)
+// =============================================
+exports.obtenerPropiedadesDeInmobiliaria = async (req, res) => {
+  try {
+    const inmobiliariaId = req.params.id;
+
+    // 1️⃣ Buscar agentes que pertenecen a esa inmobiliaria
+    const agentes = await User.find({
+      inmobiliaria: inmobiliariaId,
+      rol: "agente"
+    }).select("_id nombre correo");
+
+    const agentesIds = agentes.map(a => a._id);
+
+    // 2️⃣ Buscar las propiedades cuyo campo `agente` esté en los agentes
+    const propiedades = await Propiedad.find({
+      agente: { $in: agentesIds }
+    })
+      .populate("agente", "nombre correo telefono fotoPerfil")
+      .populate("inmobiliaria", "nombre correo logo");
+
+    return res.status(200).json({
+      ok: true,
+      totalAgentes: agentes.length,
+      totalPropiedades: propiedades.length,
+      propiedades
+    });
+
+  } catch (error) {
+    console.error("Error al obtener propiedades:", error);
+    res.status(500).json({ ok: false, error: "Error al obtener propiedades" });
+  }
+};

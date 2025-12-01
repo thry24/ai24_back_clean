@@ -49,7 +49,7 @@ const propiedadSchema = new mongoose.Schema({
 
   estadoPropiedad: {
     type: String,
-    enum: ["activa", "oportunidad", "remate bancario", "con inquilino"],
+    enum: ["activa", "oportunidad", "remate bancario", "con inquilino",'nueva', 'preventa'],
     default: "activa",
   },
 
@@ -88,6 +88,10 @@ const propiedadSchema = new mongoose.Schema({
       balcon: Boolean,
       salaTV: Boolean,
       estudio: Boolean,
+      areaLavado: {
+        tiene: Boolean,
+        tipo: String,
+      },
       areaLavado: {
         activo: { type: Boolean, default: false },
         tipo: {
@@ -203,10 +207,10 @@ const propiedadSchema = new mongoose.Schema({
     seguridad24h: Boolean,
     vistaPanoramica: Boolean,
     vistaFloraFauna: Boolean,
+    vistaGolf: Boolean,
   },
   servicios: {
     tipoGas: Boolean,
-    gasTipo: { type: String, enum: ['lp', 'natural', null], default: null },
     internet: Boolean,
     telefonia: Boolean,
     tv: Boolean,
@@ -230,7 +234,7 @@ const propiedadSchema = new mongoose.Schema({
     paddle: Boolean,
     basket: Boolean,
     volley: Boolean,
-    vistaGolf: Boolean,
+    
     otros: String,
   },
 

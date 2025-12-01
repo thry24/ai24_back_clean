@@ -302,3 +302,94 @@ function humanAge(date) {
 
 
 module.exports = router;
+
+
+// ================================
+// 🔐 CAMBIAR CONTRASEÑA DE AGENTE
+// ================================
+const bcrypt = require("bcryptjs");
+const { verificarToken } = require("../middlewares/auth");
+
+router.put("/change-password", verificarToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id; // viene del token
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "Datos incompletos" });
+    }
+
+    const user = await User.findOne({ _id: userId, rol: "agente" });
+    if (!user) return res.status(404).json({ error: "Agente no encontrado" });
+
+    // 🔒 Comparar contraseña actual
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: "La contraseña actual es incorrecta" });
+    }
+
+    // 🔐 Guardar nueva (tu modelo la encripta automáticamente)
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ mensaje: "Contraseña actualizada correctamente" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+
+// =============================
+// 🖼️ ACTUALIZAR FOTO DE PERFIL
+// =============================
+router.put("/change-photo", verificarToken, async (req, res) => {
+  try {
+    const { fotoPerfil } = req.body;
+    const userId = req.user.id;
+
+    if (!fotoPerfil) {
+      return res.status(400).json({ error: "No se envió imagen" });
+    }
+
+    const updated = await User.findOneAndUpdate(
+      { _id: userId, rol: "agente" },
+      { fotoPerfil },
+      { new: true }
+    );
+
+    if (!updated) return res.status(404).json({ error: "Agente no encontrado" });
+
+    res.json({
+      mensaje: "Foto actualizada correctamente",
+      fotoPerfil: updated.fotoPerfil
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error del servidor" });
+  }
+});
+
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return res.status(400).json({ error: 'ID inválido' });
+    }
+
+    const agente = await User.findOne({ _id: id, rol: 'agente' })
+      .select('nombre correo telefono fotoPerfil status inmobiliaria');
+
+    if (!agente) {
+      return res.status(404).json({ error: 'Agente no encontrado' });
+    }
+
+    res.json(agente);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error obteniendo agente' });
+  }
+});

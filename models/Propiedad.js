@@ -88,7 +88,14 @@ const propiedadSchema = new mongoose.Schema({
       balcon: Boolean,
       salaTV: Boolean,
       estudio: Boolean,
-      areaLavado: Boolean,
+      areaLavado: {
+        activo: { type: Boolean, default: false },
+        tipo: {
+          type: String,
+          enum: ["ninguno", "techada", "sin_techar"],
+          default: "ninguno"
+        }
+      },
       cuartoServicio: Boolean,
       sotano: Boolean,
       jardin: Boolean,
@@ -197,15 +204,14 @@ const propiedadSchema = new mongoose.Schema({
     vistaPanoramica: Boolean,
     vistaFloraFauna: Boolean,
   },
-
   servicios: {
     tipoGas: Boolean,
+    gasTipo: { type: String, enum: ['lp', 'natural', null], default: null },
     internet: Boolean,
     telefonia: Boolean,
     tv: Boolean,
     enchufeCarros: Boolean,
   },
-
   amenidades: {
     juegosInfantiles: Boolean,
     campoGolf: Boolean,
@@ -267,7 +273,12 @@ propiedadSchema.pre("save", function (next) {
     balcon: (v) => (v ? "Balcón" : ""),
     salaTV: (v) => (v ? "Sala de TV" : ""),
     estudio: (v) => (v ? "Estudio" : ""),
-    areaLavado: (v) => (v ? "Área de lavado" : ""),
+    areaLavado: (v) => {
+      if (!v || !v.activo) return "";
+      if (v.tipo === "techada") return "Área de lavado techada";
+      if (v.tipo === "sin_techar") return "Área de lavado sin techar";
+      return "Área de lavado";
+    },
     cuartoServicio: (v) => (v ? "Cuarto de servicio" : ""),
     sotano: (v) => (v ? "Sótano" : ""),
     jardin: (v) => (v ? "Jardín" : ""),

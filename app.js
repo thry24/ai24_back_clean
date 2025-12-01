@@ -3,7 +3,9 @@ const cors = require("cors");
 const allowedOrigins = [
   "https://thry24.com",
   "https://www.thry24.com",
-  "http://localhost:8100"
+    "http://localhost:8100",   // Ionic local
+  "http://localhost:4200",   // Angular local
+  "http://localhost:5173"   // Vite local
 ];
 
 require("dotenv").config();

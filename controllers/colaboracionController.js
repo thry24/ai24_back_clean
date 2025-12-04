@@ -176,6 +176,74 @@ exports.responderColaboracion = async (req, res) => {
   }
 };
 
+exports.obtenerPorInmobiliaria = async (req, res) => {
+  try {
+    const inmobiliariaId = req.params.id;
+
+    if (!inmobiliariaId) {
+      return res.status(400).json({ ok: false, message: "Falta el ID de la inmobiliaria." });
+    }
+
+    // 1️⃣ Buscar agentes de esa inmobiliaria
+    const agentes = await User.find({ inmobiliaria: inmobiliariaId })
+                              .select("_id nombre correo fotoPerfil");
+
+    if (!agentes.length) {
+      return res.json([]);
+    }
+
+    const agentesIds = agentes.map(a => a._id);
+    const agentesEmails = agentes.map(a => a.correo.toLowerCase());
+
+    // 2️⃣ Buscar colaboraciones donde intervienen esos agentes
+    const colaboraciones = await Colaboracion.find({
+      $or: [
+        { agentePrincipal: { $in: agentesIds } },
+        { colaborador: { $in: agentesIds } },
+        { colaboradorEmail: { $in: agentesEmails } }
+      ]
+    })
+    .populate("propiedad", "clave tipoPropiedad imagenPrincipal fechaCreacion agente inmobiliaria contactosGenerados")
+    .populate("colaborador", "nombre correo fotoPerfil")
+    .populate("agentePrincipal", "nombre correo fotoPerfil")
+    .lean();
+
+    // 3️⃣ Procesar resultado
+    const lista = colaboraciones.map(c => ({
+      _id: c._id,
+      tipoOperacion: c.tipoOperacion,
+      estado: c.estado,
+      tipoColaboracion: c.tipoColaboracion,
+
+      // propiedad
+      nombrePropiedad: c.propiedad?.clave || c.nombrePropiedad || "Sin nombre",
+      imagenPropiedad: c.propiedad?.imagenPrincipal || "",
+      fechaAlta: c.propiedad?.fechaCreacion || c.createdAt,
+
+      // métrica simple
+      leadsGenerados: c.propiedad?.contactosGenerados || 0,
+
+      colaborador: {
+        nombre: c.colaborador?.nombre || c.nombreColaborador,
+        correo: c.colaborador?.correo || c.colaboradorEmail,
+        foto: c.colaborador?.fotoPerfil,
+      },
+
+      agentePrincipal: {
+        nombre: c.agentePrincipal?.nombre,
+        correo: c.agentePrincipal?.correo,
+        foto: c.agentePrincipal?.fotoPerfil,
+      }
+    }));
+
+    res.json(lista);
+
+  } catch (err) {
+    console.error("❌ Error al obtener colaboraciones por inmobiliaria:", err);
+    res.status(500).json({ ok: false, message: "Error al obtener datos." });
+  }
+};
+
 exports.obtenerTodas = async (req, res) => {
   try {
     const propiedades = await Property.find().lean();

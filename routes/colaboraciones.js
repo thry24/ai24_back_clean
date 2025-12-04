@@ -9,6 +9,7 @@ router.get('/por-agente/:email', ctrl.obtenerPorAgente);
 router.get("/", ctrl.obtenerPorAgente);
 router.patch("/:id", ctrl.actualizarEstado);
 router.put('/:id/responder', verifyToken, ctrl.responderColaboracion);
+router.get("/por-inmobiliaria/:id", verifyToken, ctrl.obtenerPorInmobiliaria);
 
 
 

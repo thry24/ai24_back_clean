@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const formularioSchema = new mongoose.Schema({
-  tipo: { type: String, enum: ['compra', 'renta'], required: true },
+  tipo: { type: String, enum: ['compra', 'renta','venta/renta'], required: true },
   tipoPropiedad: String,
   soy: String,
   nombre: String,

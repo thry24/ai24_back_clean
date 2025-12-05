@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const propiedadSchema = new mongoose.Schema({
-  tipoOperacion: { type: String, enum: ["venta", "renta"], required: true },
+  tipoOperacion: { type: String, enum: ["venta", "renta","venta/renta"], required: true },
   tipoPropiedad: {
     type: String,
     enum: [
@@ -37,6 +37,7 @@ const propiedadSchema = new mongoose.Schema({
 
 
   precio: { type: Number, required: true },
+  precioRenta: { type: Number, required: false },
   descripcion: String,
 
   direccion: {

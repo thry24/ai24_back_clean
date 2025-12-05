@@ -113,12 +113,19 @@ exports.agregarPropiedad = async (req, res) => {
       amenidades,
       inmobiliaria,
       precio,
+      precioRenta
     } = parsedData;
+      // *** LÓGICA: precioRenta solo aplica en venta/renta ***
+      const precioRentaFinal =
+        tipoOperacion === "venta/renta" ? precioRenta : null;
+
+      
 
     const propiedad = new Propiedad({
       tipoOperacion,
       tipoPropiedad,
       precio,
+      precioRenta: precioRentaFinal,
       descripcion,
       direccion,
       estadoPropiedad,

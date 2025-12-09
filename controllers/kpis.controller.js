@@ -1,6 +1,33 @@
 // controllers/kpis.controller.js
 const User = require("../models/User");
 const Propiedad = require("../models/Propiedad");
+const Busqueda = require("../models/Busqueda");
+
+exports.kpiZonaMasBuscada = async (req, res) => {
+  try {
+    const inmobiliariaId = req.user.inmobiliaria;
+
+    if (!inmobiliariaId) {
+      return res.status(403).json({ msg: "No perteneces a una inmobiliaria" });
+    }
+
+    const resultados = await Busqueda.aggregate([
+      { $match: { inmobiliaria: inmobiliariaId } },
+      { $group: { _id: "$zona", total: { $sum: 1 } } },
+      { $sort: { total: -1 } },
+      { $limit: 1 }
+    ]);
+
+    res.json({
+      zonaMasBuscada: resultados[0]?._id || "Sin datos",
+      total: resultados[0]?.total || 0
+    });
+
+  } catch (err) {
+    console.error("❌ Error KPI zona más buscada:", err);
+    res.status(500).json({ msg: "Error interno" });
+  }
+};
 
 exports.kpisInmobiliaria = async (req, res) => {
   try {

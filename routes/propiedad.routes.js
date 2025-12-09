@@ -83,4 +83,8 @@ router.delete(
   propiedadController.eliminarPropiedad
 );
 
+router.post("/busquedas/registrar", 
+  verifyToken, 
+  propiedadController.registrarBusqueda);
+
 module.exports = router;

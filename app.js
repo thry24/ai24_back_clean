@@ -70,6 +70,7 @@ app.use('/api/video', VideoGeneratorRoutes);
 app.use("/api/seguimientos", seguimientoRoutes);
 app.use('/api/colaboraciones', ColaboracionesRoutes);
 app.use("/api/relaciones", require("./routes/relacion.routes"));
+
 app.use('/api', require('./routes/directorioRoutes'));
 app.use("/api/citas", citasRoutes);
 app.use('/api/agentes', agentesRoutes);
@@ -77,6 +78,7 @@ app.use("/api/kpis", require("./routes/kpis.routes"));
 app.use("/api/comisiones", comisionesRoutes);
 app.use("/api/productividad", require("./routes/productividad.routes"));
 app.use("/api/inmobiliaria", require("./routes/inmobiliaria.routes"));
+app.use("/api/busquedas", require("./routes/busquedas.routes"));
 
 
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));

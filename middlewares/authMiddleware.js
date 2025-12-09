@@ -27,6 +27,7 @@ exports.verifyToken = async (req, res, next) => {
     const correo = user.email || user.correo; // compatibilidad
     req.user = {
       id: user._id.toString(),
+        _id: user._id.toString(),
       rol: user.rol,
       nombre: user.nombre,
       email: correo,

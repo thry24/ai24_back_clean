@@ -1,6 +1,7 @@
 const Propiedad = require("../models/Propiedad");
 const User = require("../models/User"); 
 const Seguimiento = require("../models/Seguimiento");
+const Busqueda = require("../models/Busqueda");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
@@ -287,6 +288,18 @@ exports.obtenerPropiedades = async (req, res) => {
 
     if (keyword) {
       filtros.keywords = { $regex: keyword, $options: "i" };
+    }
+   //Filtro por ubicación / zona / colonia / municipio / estado
+    if (req.query.zona && req.query.zona.trim() !== "") {
+      const zonaRegex = new RegExp(req.query.zona, "i");
+
+      filtros.$or = [
+        { "direccion.zona": zonaRegex },
+        { "direccion.colonia": zonaRegex },
+        { "direccion.municipio": zonaRegex },
+        { "direccion.estado": zonaRegex },
+        { "direccion.calle": zonaRegex },
+      ];
     }
 
     if (caracteristicas) {
@@ -663,6 +676,24 @@ exports.actualizarEstadoPropiedad = async (req, res) => {
   } catch (err) {
     console.error("Error al actualizar estado de propiedad:", err);
     res.status(500).json({ msg: "Error interno al actualizar el estado." });
+  }
+};
+//método para la zona de mayor demanda a KPIS
+exports.registrarBusqueda = async (req, res) => {
+  try {
+    await Busqueda.create({
+      keyword: req.body.keyword,
+      tipoOperacion: req.body.tipoOperacion,
+      estado: req.body.estado,
+      zona: req.body.zona,
+      usuario: req.user?._id,
+      inmobiliaria: req.user?.inmobiliaria
+    });
+
+    res.json({ msg: "OK" });
+  } catch (err) {
+    console.error("Error al registrar búsqueda:", err);
+    res.status(500).json({ msg: "Error al registrar búsqueda" });
   }
 };
 

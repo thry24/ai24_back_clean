@@ -128,6 +128,8 @@ const propiedadSchema = new mongoose.Schema({
       restriccionGiro: String,
       giro: String,
       seguridad: Boolean,
+      costoMantenimiento: Number,    // nuevo
+      entrega: String  
     },
 
     bodega: {
@@ -152,6 +154,9 @@ const propiedadSchema = new mongoose.Schema({
       techoLamina: Boolean,
       arcoTecho: Boolean,
       banosEmpleados: Number,
+      Vigilancia : Boolean,
+      Sistemaantiincendios: Boolean,
+      Cocina : Boolean
     },
 
     rancho: {
@@ -164,6 +169,8 @@ const propiedadSchema = new mongoose.Schema({
       establo: Boolean,
       invernadero: Boolean,
       bordo: Boolean,
+      riegoTemporal: Boolean,
+      bodega: Boolean,
     },
 
     oficina: {
@@ -175,6 +182,11 @@ const propiedadSchema = new mongoose.Schema({
       comedores: Boolean,
       empleados: Number,
       corporativo: Boolean,
+      cocina: Boolean,
+      aireAcondicionado: Boolean,
+      equipadas: Boolean,
+      estacionamiento: Boolean,
+      entrega: String,
     },
 
     edificio: {
@@ -187,6 +199,12 @@ const propiedadSchema = new mongoose.Schema({
       gatosHidraulicos: Boolean,
       autosustentable: Boolean,
       estacionamientos: Number,
+      elevador: Boolean,
+      Mezanine: Boolean,
+      aireAcondicionado: Boolean,
+      comedor: Boolean,
+      corporativo: Boolean,
+      banos: Number,
     },
   },
 

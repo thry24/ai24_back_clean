@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const ctrl = require("../controllers/seguimiento.controller");
-const { verifyToken } = require("../middlewares/authMiddleware");
+const { verifyToken, permitirRoles } = require("../middlewares/authMiddleware");
 
 // crear o devolver
 router.post("/", ctrl.createOrGetSeguimiento);
@@ -17,6 +17,30 @@ router.get("/agente-id/:agenteId", verifyToken, ctrl.getSeguimientosPorAgente);
 
 router.patch("/:id", ctrl.patchSeguimiento);
 
+// ================================
+//  Seguimientos por inmobiliaria
+//  GET /api/seguimientos/inmobiliaria/:inmobiliariaId
+// ================================
+router.get(
+  "/inmobiliaria/:inmobiliariaId",
+  verifyToken,
+  permitirRoles("inmobiliaria"),
+  ctrl.obtenerSeguimientosDeInmobiliaria
+);
+
+// Alias opcional CRM (si deseas conservarlo)
+router.get(
+  "/crm/inmobiliaria/:inmobiliariaId",
+  verifyToken,
+  permitirRoles("inmobiliaria"),
+  ctrl.obtenerSeguimientosDeInmobiliaria
+);
+router.get(
+  "/inmobiliaria/dashboard/:id",
+  verifyToken,
+  permitirRoles("inmobiliaria"),
+  ctrl.getSeguimientosDashboardInmobiliaria
+);
 
 // Seguimientos por inmobiliaria
 router.get("/crm/seguimientos/inmobiliaria/:inmobiliariaId", verifyToken, ctrl.getByInmobiliaria);

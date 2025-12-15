@@ -4,37 +4,53 @@ const { verifyToken, permitirRoles } = require("../middlewares/authMiddleware");
 const propiedadController = require("../controllers/propiedad.controller");
 const uploadMultiple = require("../middlewares/uploadMultiple.middleware");
 
+// =======================
+// PUBLICADAS
+// =======================
 router.get("/propiedades", propiedadController.obtenerPropiedades);
-router.get(
-  "/propiedades/verificar-coordenadas",
-  propiedadController.verificarCoordenadas
-);
-router.get(
-  "/propiedades/por-agente-email",
-  propiedadController.obtenerPropiedadesPorAgenteEmail
-);
+router.get("/propiedades/verificar-coordenadas", propiedadController.verificarCoordenadas);
+router.get("/propiedades/por-agente-email", propiedadController.obtenerPropiedadesPorAgenteEmail);
 
+// =======================
+// PROPIEDADES DEL AGENTE
+// =======================
 router.get(
   "/propiedades/agente/mis-propiedades",
   verifyToken,
   permitirRoles("agente"),
   propiedadController.obtenerPropiedadesAgente
 );
+
 router.get(
   "/propiedades/agente/:id",
   propiedadController.obtenerPropiedadesDeAgente
 );
+
+// =======================
+// PROPIEDADES DE INMOBILIARIA (AGENTES)
+// =======================
 router.get(
   "/propiedades/inmobiliaria/:id",
   propiedadController.obtenerPropiedadesDeInmobiliaria
 );
-router.get("/propiedades/:id", propiedadController.obtenerPropiedadPorId);
+router.get(
+  "/propiedades/listado/inmobiliaria/:id",
+  propiedadController.listadoPropiedadesInmobiliaria
+);
+
+// =======================
+// PROPIEDADES PUBLICADAS POR LA INMOBILIARIA (EL DUEÑO)
+// =======================
 router.get(
   "/propiedades/inmobiliaria/mis-propiedades",
   verifyToken,
   permitirRoles("inmobiliaria"),
   propiedadController.obtenerPropiedadesInmobiliaria
 );
+
+// =======================
+// CRUD
+// =======================
 router.post(
   "/propiedades",
   verifyToken,
@@ -51,10 +67,7 @@ router.put(
   propiedadController.actualizarPropiedad
 );
 
-router.patch(
-  "/propiedades/:id/visita",
-  propiedadController.incrementarVisita
-);
+router.patch("/propiedades/:id/visita", propiedadController.incrementarVisita);
 
 router.post(
   "/propiedades/:id/contacto",
@@ -83,8 +96,7 @@ router.delete(
   propiedadController.eliminarPropiedad
 );
 
-router.post("/busquedas/registrar", 
-  verifyToken, 
-  propiedadController.registrarBusqueda);
+// =======================
+router.post("/busquedas/registrar", verifyToken, propiedadController.registrarBusqueda);
 
 module.exports = router;

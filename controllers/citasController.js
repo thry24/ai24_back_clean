@@ -1,5 +1,6 @@
 const Cita = require('../models/Cita');
 const Seguimiento = require('../models/Seguimiento');
+const User = require("../models/User"); 
 
 // helper: compone Date real (UTC) con "YYYY-MM-DD" + "HH:mm"
 function parseFechaHora(fechaStr, horaStr) {
@@ -134,5 +135,51 @@ exports.obtenerCitasPorAgente = async (req, res) => {
   } catch (err) {
     console.error("Error obtener citas:", err);
     res.status(500).json({ msg: "Error obteniendo citas" });
+  }
+};
+exports.obtenerCitasInmobiliaria = async (req, res) => {
+  try {
+    const inmobiliariaId = req.params.id;
+
+    // 🔹 Obtener todos los agentes vinculados con esa inmobiliaria
+    const agentes = await User.find({ inmobiliaria: inmobiliariaId })
+      .select("correo nombre fotoPerfil");
+
+    if (agentes.length === 0) {
+      return res.json([]);
+    }
+
+    const agentesEmails = agentes.map(a => a.correo);
+
+    // 🔹 Obtener todas las citas de esos agentes
+    const citas = await Cita.find({
+      agenteEmail: { $in: agentesEmails }
+    })
+      .populate("propiedadId", "clave imagenes")
+      .sort({ fecha: 1 });
+
+    // 🔹 Formateamos la respuesta para tu tabla
+    const respuesta = citas.map(c => {
+      const agente = agentes.find(a => a.correo === c.agenteEmail);
+
+      return {
+        nombreAgente: agente?.nombre || "",
+        fotoAgente: agente?.fotoPerfil || "",
+        idPropiedad: c.propiedadId?.clave || c.propiedadClave || "",
+        imgPropiedad: c.propiedadId?.imagenes?.[0] || "",
+        tipoOperacion: c.tipoOperacion,
+        tipoCliente: c.tipoCliente,
+        tipoEvento: c.tipoEvento,
+        fecha: c.fecha,
+        hora: c.hora,
+        totalCitas: 1
+      };
+    });
+
+    res.json(respuesta);
+
+  } catch (err) {
+    console.error("Error obtener citas inmobiliaria:", err);
+    res.status(500).json({ msg: "Error interno" });
   }
 };

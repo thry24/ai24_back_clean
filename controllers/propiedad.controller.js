@@ -25,6 +25,121 @@ const fonts = {
 };
 
 const printer = new PdfPrinter(fonts);
+/** ================================
+ *  OBTENER PROPIEDADES DE UNA INMOBILIARIA
+ *  GET /propiedades/inmobiliaria/:id
+ * ================================ **/
+exports.obtenerPropiedadesDeInmobiliaria = async (req, res) => {
+  try {
+    const { id } = req.params; // ID de la inmobiliaria
+
+    if (!id) {
+      return res.status(400).json({ msg: "Falta el ID de la inmobiliaria" });
+    }
+
+    // 1️⃣ Buscar agentes que pertenecen a esa inmobiliaria
+    const agentes = await User.find({ inmobiliaria: id }).select("_id nombre fotoPerfil");
+
+    if (!agentes.length) {
+      return res.json([]); // Si no hay agentes, no hay propiedades
+    }
+
+    const agentesIds = agentes.map(a => a._id);
+
+    // 2️⃣ Buscar propiedades de esos agentes
+    const propiedades = await Propiedad.find({
+      agente: { $in: agentesIds }
+    })
+    .populate("agente", "nombre fotoPerfil correo email")
+    .lean();
+
+    // 3️⃣ Preparar respuesta limpia
+    const resultado = propiedades.map(p => ({
+      _id: p._id,
+      titulo: p.titulo || p.clave || "Propiedad sin título",
+      tipoOperacion: p.tipoOperacion || "",
+      tipoPropiedad: p.tipoPropiedad || "",
+      estado: p.estado || "",
+      descripcion: p.descripcion || "",
+      habitaciones: p.recamaras || p.habitaciones || 0,
+      banos: p.banos || 0,
+      estacionamientos: p.estacionamientos || 0,
+      m2Construccion: p.m2Construccion || 0,
+      superficie: p.superficie || 0,
+      precio: p.precio || 0,
+      imagenes: p.imagenes || [],
+      imagenPrincipal: p.imagenPrincipal || (p.imagenes?.[0] ?? ""),
+
+      agente: {
+        id: p.agente?._id || null,
+        nombre: p.agente?.nombre || "Agente desconocido",
+        foto: p.agente?.fotoPerfil || "",
+        correo: p.agente?.correo || p.agente?.email || ""
+      }
+    }));
+
+    res.json(resultado);
+
+  } catch (err) {
+    console.error("Error al obtener propiedades de la inmobiliaria:", err);
+    res.status(500).json({ msg: "Error obteniendo propiedades de la inmobiliaria" });
+  }
+};
+exports.listadoPropiedadesInmobiliaria = async (req, res) => {
+  try {
+    const { id } = req.params; // ID de la inmobiliaria
+
+    if (!id) {
+      return res.status(400).json({ msg: "Falta el ID de la inmobiliaria" });
+    }
+
+    const agentes = await User.find({ inmobiliaria: id })
+      .select("_id nombre fotoPerfil correo email");
+
+    if (!agentes.length) return res.json([]);
+
+    const agentesIds = agentes.map(a => a._id);
+
+    const propiedades = await Propiedad.find({
+      agente: { $in: agentesIds }
+    })
+    .populate("agente", "nombre fotoPerfil correo email")
+    .lean();
+
+    const resultado = propiedades.map(p => ({
+      _id: p._id,
+      titulo: p.titulo || p.clave || "Propiedad",
+      tipoOperacion: p.tipoOperacion || "",
+      tipoPropiedad: p.tipoPropiedad || "",
+      descripcion: p.descripcion || "",
+      precio: p.precio || 0,
+      estado: p.estado || "",
+      habitaciones: p.recamaras || p.habitaciones || 0,
+      banos: p.banos || 0,
+      estacionamientos: p.estacionamientos || 0,
+      sqft: p.superficie || p.m2Construccion || 0,
+
+      // 🔥🔥 IMAGEN CORRECTA
+      imagen:
+        p.imagenPrincipal ||
+        (Array.isArray(p.imagenes) && p.imagenes.length > 0 ? p.imagenes[0] : ""),
+
+      agente: {
+        id: p.agente?._id || null,
+        nombre: p.agente?.nombre || "Agente desconocido",
+        foto: p.agente?.fotoPerfil || "",
+        correo: p.agente?.correo || p.agente?.email || "",
+      }
+    }));
+
+    res.json(resultado);
+
+  } catch (err) {
+    console.error("Error listado propiedades inmobiliaria:", err);
+    res.status(500).json({ msg: "Error listando propiedades" });
+  }
+};
+
 
 exports.generarFichaPDF = async (req, res) => {
   try {

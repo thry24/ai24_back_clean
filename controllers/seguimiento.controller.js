@@ -1,5 +1,6 @@
 const Seguimiento = require("../models/Seguimiento");
 const Relacion = require('../models/RelacionAgenteCliente'); // 👈 asegúrate de importar tu modelo de relación
+const Propiedad = require("../models/Propiedad"); 
 const User = require("../models/User"); // 👈 tu modelo real
 exports.crearOObtenerSeguimiento = async (req, res) => {
   try {
@@ -195,3 +196,157 @@ exports.getByInmobiliaria = async (req, res) => {
     return res.status(500).json({ msg: "Error interno del servidor" });
   }
 };
+exports.obtenerSeguimientosDeInmobiliaria = async (req, res) => {
+  try {
+    const inmobiliariaId = req.params.inmobiliariaId || req.params.id;
+
+    // 1️⃣ Obtener agentes de la inmobiliaria
+    const agentes = await User.find({ inmobiliaria: inmobiliariaId })
+      .select("_id nombre fotoPerfil correo email");
+
+    if (!agentes.length) return res.json([]);
+
+    const agentesMap = {};
+    agentes.forEach(a => {
+      agentesMap[a.correo || a.email] = {
+        nombre: a.nombre,
+        foto: a.fotoPerfil || "",
+      };
+    });
+
+    const agentesEmails = Object.keys(agentesMap);
+
+    // 2️⃣ Obtener seguimientos de esos agentes
+    const seguimientos = await Seguimiento.find({
+      agenteEmail: { $in: agentesEmails }
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // 3️⃣ Obtener propiedades vinculadas
+    const propiedadesIds = seguimientos
+      .filter(s => s.propiedadId)
+      .map(s => s.propiedadId);
+
+    const propiedades = await Propiedad.find({ _id: { $in: propiedadesIds } })
+      .select("titulo descripcion clave imagenPrincipal imagenes")
+      .lean();
+
+    const propiedadesMap = {};
+    propiedades.forEach(p => {
+      propiedadesMap[p._id] = p;
+    });
+
+    // 4️⃣ Construir respuesta EXACTA para tu frontend
+    const resultado = seguimientos.map(s => {
+      const agente = agentesMap[s.agenteEmail] || { nombre: "Agente desconocido", foto: "" };
+      const prop = propiedadesMap[s.propiedadId] || null;
+
+      return {
+        _id: s._id,
+        clienteNombre: s.clienteNombre || "Sin nombre",
+        clienteEmail: s.clienteEmail,
+
+        agenteEmail: s.agenteEmail,
+        agenteNombre: agente.nombre,
+        agenteFoto: agente.foto,
+
+        tipoOperacion: s.tipoOperacion || "—",
+        tipoCliente: s.tipoCliente || "—",
+        fechaPrimerContacto: s.fechaPrimerContacto,
+        estatus: s.estatus || "—",
+
+        propiedadId: s.propiedadId,
+        propiedadDescripcion: prop?.descripcion || "—",
+        propiedadImg: prop?.imagenPrincipal || prop?.imagenes?.[0] || "assets/img/no-image.png"
+      };
+    });
+
+    res.json(resultado);
+
+  } catch (err) {
+    console.error("Error obteniendo seguimientos:", err);
+    res.status(500).json({ msg: "Error al obtener seguimientos" });
+  }
+};
+exports.getSeguimientosDashboardInmobiliaria = async (req, res) => {
+  try {
+    const inmobiliariaId = req.params.id;
+
+    // 1️⃣ Obtener agentes de la inmobiliaria
+    const agentes = await User.find({ inmobiliaria: inmobiliariaId })
+      .select("_id nombre fotoPerfil correo email");
+
+    if (!agentes.length) return res.json([]);
+
+    const agentesMap = {};
+    const agentesCorreos = [];
+
+    agentes.forEach(a => {
+      const correo = a.correo || a.email;
+      agentesCorreos.push(correo);
+      agentesMap[correo] = {
+        nombre: a.nombre,
+        avatar: a.fotoPerfil || ""
+      };
+    });
+
+    // 2️⃣ Obtener seguimientos de todos esos agentes
+    const seguimientos = await Seguimiento.find({
+      agenteEmail: { $in: agentesCorreos }
+    })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // 3️⃣ Traer propiedades ligadas
+    const propiedadesIds = seguimientos
+      .filter(s => s.propiedadId)
+      .map(s => s.propiedadId);
+
+    const propiedades = await Propiedad.find({
+      _id: { $in: propiedadesIds }
+    })
+      .select("titulo clave descripcion imagenPrincipal imagenes agente")
+      .lean();
+
+    const propiedadesMap = {};
+    propiedades.forEach(p => propiedadesMap[p._id] = p);
+
+    // 4️⃣ Construir ARRAY para el dashboard (formato esperado por tu HTML)
+    const resultado = seguimientos.map(seg => {
+      const agente = agentesMap[seg.agenteEmail];
+      const prop = seg.propiedadId ? propiedadesMap[seg.propiedadId] : null;
+
+      return {
+        id: prop?._id || "SIN ID",
+        img: prop?.imagenPrincipal || (prop?.imagenes?.[0] ?? "assets/img/no-image.png"),
+
+        agente: agente?.nombre || seg.agenteEmail,
+        agenteAvatar: agente?.avatar || "",
+
+        cliente: seg.clienteNombre || seg.clienteEmail,
+        fecha: seg.fechaPrimerContacto,
+        
+        tipoOperacion: seg.tipoOperacion || "—",
+        tipoComision: seg.tipoCliente === "compartido" ? "COMPARTIDA" : "DIRECTA",
+
+        propiedades: 1,
+
+        caracteristicas: prop?.descripcion || "—",
+
+        estatusActual: seg.estatus,
+        seguimientoId: seg._id,
+        propiedadId: seg.propiedadId,
+
+        asesorCompartido: seg.tipoCliente === "compartido" ? agente?.nombre : null
+      };
+    });
+
+    res.json(resultado);
+
+  } catch (error) {
+    console.error("Error obteniendo dashboard:", error);
+    res.status(500).json({ msg: "Error interno del servidor" });
+  }
+};
+

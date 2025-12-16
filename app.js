@@ -70,7 +70,6 @@ app.use('/api/video', VideoGeneratorRoutes);
 app.use("/api/seguimientos", seguimientoRoutes);
 app.use('/api/colaboraciones', ColaboracionesRoutes);
 app.use("/api/relaciones", require("./routes/relacion.routes"));
-
 app.use('/api', require('./routes/directorioRoutes'));
 app.use("/api/citas", citasRoutes);
 app.use('/api/agentes', agentesRoutes);

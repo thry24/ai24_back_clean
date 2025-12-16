@@ -92,10 +92,6 @@ const propiedadSchema = new mongoose.Schema({
       patio: Boolean,
       estudio: Boolean,
       areaLavado: {
-        tiene: Boolean,
-        tipo: String,
-      },
-      areaLavado: {
         activo: { type: Boolean, default: false },
         tipo: {
           type: String,

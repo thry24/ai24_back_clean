@@ -83,11 +83,13 @@ const propiedadSchema = new mongoose.Schema({
       closetVestidor: String,
       superficie: String,
       construccion: String,
+      tipoEstacionamiento: String,
       pisos: Number,
       cocina: String,
       barraDesayunador: Boolean,
       balcon: Boolean,
       salaTV: Boolean,
+      patio: Boolean,
       estudio: Boolean,
       areaLavado: {
         tiene: Boolean,
@@ -105,11 +107,13 @@ const propiedadSchema = new mongoose.Schema({
       sotano: Boolean,
       jardin: Boolean,
       terraza: Boolean,
+      
     },
 
     terreno: {
       m2Frente: String,
       m2Fondo: String,
+      superficie: String,
       tipo: String,
       costoXM2: String,
       kmz: Boolean,
@@ -175,6 +179,7 @@ const propiedadSchema = new mongoose.Schema({
 
     oficina: {
       superficie: Number,
+      uso: String,
       privados: Number,
       salaJuntas: Number,
       banosPrivados: Number,

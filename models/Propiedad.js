@@ -103,7 +103,27 @@ const propiedadSchema = new mongoose.Schema({
       sotano: Boolean,
       jardin: Boolean,
       terraza: Boolean,
-      
+        // 🔹 SOLO CASA
+  casa: {
+    tipo: {
+      type: String,
+      enum: ["privada", "calle_abierta", "condominio", "uso_comercial"],
+      default: ""
+    }
+  },
+
+  // 🔹 SOLO DEPARTAMENTO
+  departamento: {
+    nivel: {
+      type: String,
+      enum: ["planta_baja", "planta_alta"],
+      default: undefined   // 🔥 CLAVE
+    },
+    numeroPiso: {
+      type: Number,
+      default: null
+    }
+  },
     },
 
     terreno: {
@@ -192,6 +212,7 @@ const propiedadSchema = new mongoose.Schema({
 
     edificio: {
       m2xPiso: String,
+      uso: String,
       pisosEdificio: Number,
       oficinas: Number,
       sistemaIncendios: Boolean,

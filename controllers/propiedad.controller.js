@@ -212,8 +212,9 @@ exports.generarFichaPDF = async (req, res) => {
 
 exports.agregarPropiedad = async (req, res) => {
   try {
+    // 1️⃣ Parseo de datos
     const parsedData = JSON.parse(req.body.datos);
-    console.log(parsedData);
+    console.log('📥 Datos recibidos:', parsedData);
 
     const {
       tipoOperacion,
@@ -231,12 +232,32 @@ exports.agregarPropiedad = async (req, res) => {
       precio,
       precioRenta
     } = parsedData;
-      // *** LÓGICA: precioRenta solo aplica en venta/renta ***
-      const precioRentaFinal =
-        tipoOperacion === "venta/renta" ? precioRenta : null;
 
-      
+    // 2️⃣ Regla de negocio: precioRenta solo aplica en venta/renta
+    const precioRentaFinal =
+      tipoOperacion === "venta/renta" ? precioRenta : null;
 
+    // 3️⃣ 🔥 LIMPIEZA OBLIGATORIA CASA / DEPARTAMENTO (ANTES DE CREAR EL DOCUMENTO)
+    if (caracteristicas?.casaDepto) {
+
+      if (tipoPropiedad === "casa") {
+        console.log('🧹 Limpieza: eliminando departamento (es CASA)');
+        delete caracteristicas.casaDepto.departamento;
+      }
+
+      if (tipoPropiedad === "departamento") {
+        console.log('🧹 Limpieza: eliminando casa (es DEPARTAMENTO)');
+        delete caracteristicas.casaDepto.casa;
+      }
+    }
+
+    // 🔍 LOG FINAL PARA CONFIRMAR (MUY IMPORTANTE)
+    console.log(
+      '🧪 casaDepto FINAL:',
+      JSON.stringify(caracteristicas?.casaDepto, null, 2)
+    );
+
+    // 4️⃣ Creación del documento (DESPUÉS de limpiar)
     const propiedad = new Propiedad({
       tipoOperacion,
       tipoPropiedad,
@@ -255,6 +276,7 @@ exports.agregarPropiedad = async (req, res) => {
       inmobiliaria: inmobiliaria || null,
     });
 
+    // 5️⃣ Archivos adjuntos
     if (req.files?.archivos) {
       const docs = [];
       for (const archivo of req.files.archivos) {
@@ -269,6 +291,7 @@ exports.agregarPropiedad = async (req, res) => {
       propiedad.archivos = docs;
     }
 
+    // 6️⃣ Imagen principal
     if (req.files?.imagenPrincipal?.[0]) {
       const subida = await subirAGoogleStorage(
         req.files.imagenPrincipal[0].path,
@@ -278,6 +301,7 @@ exports.agregarPropiedad = async (req, res) => {
       propiedad.imagenPrincipal = subida.url;
     }
 
+    // 7️⃣ Imágenes secundarias
     if (req.files?.imagenes) {
       const imgs = [];
       for (const img of req.files.imagenes) {
@@ -288,17 +312,28 @@ exports.agregarPropiedad = async (req, res) => {
       propiedad.imagenes = imgs;
     }
 
+    // 8️⃣ Estado inicial
     propiedad.estadoPublicacion = "no publicada";
 
+    // 9️⃣ Clave automática
     propiedad.clave = await generarClave(direccion);
+
+    // 🔟 Guardado final
     await propiedad.save();
 
-    res.status(201).json({ msg: "Propiedad registrada con éxito.", propiedad });
+    res.status(201).json({
+      msg: "Propiedad registrada con éxito.",
+      propiedad
+    });
+
   } catch (error) {
-    console.error("Error al registrar propiedad:", error);
-    res.status(500).json({ msg: "Error interno al registrar la propiedad." });
+    console.error("❌ Error al registrar propiedad:", error);
+    res.status(500).json({
+      msg: "Error interno al registrar la propiedad."
+    });
   }
 };
+
 
 async function generarClave(direccion) {
   const estado = direccion?.estado?.substring(0, 3).toUpperCase() || "XXX";

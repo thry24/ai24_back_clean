@@ -12,6 +12,14 @@ router.get("/propiedades/verificar-coordenadas", propiedadController.verificarCo
 router.get("/propiedades/por-agente-email", propiedadController.obtenerPropiedadesPorAgenteEmail);
 
 // =======================
+// OBTENER PROPIEDAD POR ID (EDITAR / DETALLE)
+// =======================
+router.get(
+  "/propiedades/:id",
+  propiedadController.obtenerPropiedadPorId
+);
+
+// =======================
 // PROPIEDADES DEL AGENTE
 // =======================
 router.get(

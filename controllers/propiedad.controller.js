@@ -981,7 +981,7 @@ Hola, me interesa la propiedad ${prop.clave || prop._id}.
 // =============================================
 // 🔥 OBTENER PROPIEDADES POR INMOBILIARIA (POR AGENTES)
 // =============================================
-exports.obtenerPropiedadesDeInmobiliaria = async (req, res) => {
+exports.obtenerPropiedadesDeInmobiliariaXAgente= async (req, res) => {
   try {
     const inmobiliariaId = req.params.id;
 
@@ -1011,4 +1011,6 @@ exports.obtenerPropiedadesDeInmobiliaria = async (req, res) => {
     console.error("Error al obtener propiedades:", error);
     res.status(500).json({ ok: false, error: "Error al obtener propiedades" });
   }
+
+  
 };

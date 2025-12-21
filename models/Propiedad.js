@@ -108,7 +108,7 @@ const propiedadSchema = new mongoose.Schema({
     tipo: {
       type: String,
       enum: ["privada", "calle_abierta", "condominio", "uso_comercial"],
-      default: ""
+      default: undefined
     }
   },
 
@@ -180,7 +180,8 @@ const propiedadSchema = new mongoose.Schema({
     },
 
     rancho: {
-      hectareas: String,
+      superficie: String,
+      unidadSuperficie: String,
       uso: String,
       pozo: Boolean,
       corrales: Boolean,
@@ -244,7 +245,6 @@ const propiedadSchema = new mongoose.Schema({
     chimenea: Boolean,
     circuitoCerrado: Boolean,
     sistemaInteligente: Boolean,
-    elevador: Boolean,
     seguridad24h: Boolean,
     vistaPanoramica: Boolean,
     vistaFloraFauna: Boolean,
@@ -256,6 +256,7 @@ const propiedadSchema = new mongoose.Schema({
     telefonia: Boolean,
     tv: Boolean,
     enchufeCarros: Boolean,
+    elevador: Boolean,
   },
   amenidades: {
     juegosInfantiles: Boolean,
@@ -275,6 +276,7 @@ const propiedadSchema = new mongoose.Schema({
     paddle: Boolean,
     basket: Boolean,
     volley: Boolean,
+    albercaPrivada: Boolean,
     
     otros: String,
   },

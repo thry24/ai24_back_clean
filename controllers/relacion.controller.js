@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Relacion = require("../models/RelacionAgenteCliente");
 const bcrypt = require("bcryptjs");
 const { resend } = require("../config/resend");
+const { enviarAltaCliente } = require('../utils/mailerClientes');
 
 // =========================
 // 🔹 OBTENER RELACIÓN
@@ -76,9 +77,13 @@ exports.agenteCreaCliente = async (req, res) => {
     const agenteId = req.user._id;
     const { nombre, email, telefono, tipoCliente } = req.body;
 
+    // 1️⃣ Validar agente
     const agente = await User.findById(agenteId);
-    if (!agente) return res.status(404).json({ msg: "Agente no encontrado" });
+    if (!agente) {
+      return res.status(404).json({ msg: "Agente no encontrado" });
+    }
 
+    // 2️⃣ Validar límite por plan
     const limite = limitePorPlan(agente.tipoPlan);
     const usados = await Relacion.countDocuments({ agente: agenteId });
 
@@ -88,41 +93,45 @@ exports.agenteCreaCliente = async (req, res) => {
       });
     }
 
-    let cliente = await User.findOne({ correo: email });
-
+    // 3️⃣ Buscar cliente
+    let cliente = await User.findOne({ correo: email.toLowerCase() });
     let esNuevo = false;
 
-    if (!cliente) {
-      esNuevo = true;
-      const tempPass = Math.random().toString(36).slice(-8);
-      const hash = await bcrypt.hash(tempPass, 10);
+    // 4️⃣ Crear cliente si no existe
+if (!cliente) {
+  esNuevo = true;
 
-      cliente = await User.create({
-        nombre,
-        correo: email,
-        telefono,
-        password: hash,
-        rol: "cliente",
-        tipoCliente,
-        origen: "relacion",
-      });
+  const tempPass = Math.random().toString(36).slice(-8);
+  const hash = await bcrypt.hash(tempPass, 10);
 
-      await resend.emails.send({
-        from: "Thry24 <verificaciones@thry24.com>",
-        to: email,
-        subject: "Bienvenido a Thry24 🚀",
-        html: `
-          <h2>Bienvenido a Thry24</h2>
-          <p>Has sido registrado por tu agente <b>${agente.nombre}</b>.</p>
-          <p><b>Correo:</b> ${email}</p>
-          <p><b>Contraseña temporal:</b> ${tempPass}</p>
-        `,
-      });
-    }
+  cliente = await User.create({
+    nombre,
+    correo: email,
+    telefono,
+    password: hash,
+    rol: "cliente",
+    tipoCliente,
+    origen: "relacion",
+  });
 
+  // 📧 Enviar correo con SMTP Hostinger
+  try {
+    await enviarAltaCliente({
+      to: email,
+      nombreCliente: nombre,
+      nombreAgente: agente.nombre,
+      correo: email,
+      password: tempPass
+    });
+  } catch (mailErr) {
+    console.error("❌ Error enviando correo de alta cliente:", mailErr);
+  }
+}
+
+    // 5️⃣ Verificar relación existente
     const existeRelacion = await Relacion.findOne({
       agente: agenteId,
-      cliente: cliente._id
+      cliente: cliente._id,
     });
 
     if (existeRelacion) {
@@ -132,20 +141,22 @@ exports.agenteCreaCliente = async (req, res) => {
       });
     }
 
+    // 6️⃣ Crear relación
     const relacion = await Relacion.create({
       agente: agenteId,
       cliente: cliente._id,
-      tipoCliente
+      tipoCliente,
     });
 
-    res.json({
+    // 7️⃣ Respuesta final
+    return res.json({
       msg: esNuevo ? "Cliente creado y asignado." : "Cliente asignado.",
       cliente,
-      relacion
+      relacion,
     });
 
   } catch (err) {
-    console.error("Error crear cliente:", err);
-    res.status(500).json({ msg: "Error interno" });
+    console.error("❌ Error crear cliente:", err);
+    return res.status(500).json({ msg: "Error interno" });
   }
 };

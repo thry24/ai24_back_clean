@@ -45,22 +45,31 @@ router.get('/verificar/:idUsuario', async (req, res) => {
     /* ============================================================
        🧑‍💼 3. AGENTE DE INMOBILIARIA
        ============================================================ */
-    if (usuario.rol === "agente" && usuario.inmobiliaria) {
-      const inmo = usuario.inmobiliaria;
+      if (usuario.rol === "agente" && usuario.inmobiliaria) {
+        const inmo = usuario.inmobiliaria;
 
-      if (inmo.planActivo && (!inmo.planExpira || new Date(inmo.planExpira) > hoy)) {
-        acceso = true;
+        // ❌ Inmobiliaria sin plan activo o expirado
+        if (
+          !inmo.planActivo ||
+          (inmo.planExpira && new Date(inmo.planExpira) <= hoy)
+        ) {
+          return res.json({
+            acceso: false,
+            motivo: "INMOBILIARIA_INACTIVA"
+          });
+        }
+
+        // ✅ Inmobiliaria con plan válido
+        return res.json({ acceso: true });
       }
-      return res.json({ acceso });
-    }
 
-    return res.json({ acceso: false });
+          return res.json({ acceso: false });
 
-  } catch (err) {
-    console.error('Error al verificar plan:', err);
-    return res.json({ acceso: false, msg: "Error al verificar" });
-  }
-});
+        } catch (err) {
+          console.error('Error al verificar plan:', err);
+          return res.json({ acceso: false, msg: "Error al verificar" });
+        }
+      });
 // ====================================================
 // 2️⃣ Activar plan (para pruebas)
 // ====================================================

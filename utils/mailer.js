@@ -11,6 +11,14 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+transporter.verify((error, success) => {
+  if (error) {
+    console.error('❌ SMTP ERROR:', error);
+  } else {
+    console.log('✅ SMTP listo para enviar');
+  }
+});
+
 async function enviarCredenciales(to, nombreInmo, correo, password) {
   const mensaje = `
     <h2>Bienvenido a Thry24 🚀</h2>

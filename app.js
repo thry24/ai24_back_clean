@@ -5,7 +5,8 @@ const allowedOrigins = [
   "https://www.thry24.com",
     "http://localhost:8100",   // Ionic local
   "http://localhost:4200",   // Angular local
-  "http://localhost:5173"   // Vite local
+  "http://localhost:5173",   // Vite local
+  "https://thry24.com/inmobiliaria/"
 ];
 
 require("dotenv").config();

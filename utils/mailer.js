@@ -3,8 +3,8 @@ const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
   host: 'smtp.hostinger.com',
-  port: 465,
-  secure: true,
+  port: 587,
+  secure: false,
   auth: {
     user: 'verificaciones@ai24mx.com',  // tu cuenta en Hostinger
     pass: 'ai24EkJc-2025-src'           // tu contraseña SMTP

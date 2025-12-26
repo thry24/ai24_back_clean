@@ -6,8 +6,8 @@ const transporter = nodemailer.createTransport({
   port: 465,
   secure: true,
   auth: {
-    user: 'verificaciones@ai24mx.com',  // tu cuenta en Hostinger
-    pass: 'ai24EkJc-2025-src'           // tu contraseña SMTP
+    user: 'verificaciones@thry24.com',  // tu cuenta en Hostinger
+    pass: '7_Estrellas'           // tu contraseña SMTP
   }
 });
 

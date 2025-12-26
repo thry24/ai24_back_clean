@@ -3,8 +3,6 @@ const cors = require("cors");
 const allowedOrigins = [
   "https://thry24.com",
   "https://www.thry24.com",
-  "http://thry24.com",        // 👈 ESTE FALTABA
-  "http://www.thry24.com",    // 👈 recomendado
   "http://localhost:8100",
   "http://localhost:4200",
   "http://localhost:5173"

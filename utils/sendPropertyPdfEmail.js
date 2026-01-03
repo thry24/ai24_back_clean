@@ -1,28 +1,24 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: true,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 /**
- * Envía un correo con el PDF de la propiedad adjunto.
- * @param {Object} params
- * @param {string[]} params.toList 
- * @param {string} params.subject 
- * @param {string} params.html 
- * @param {string} params.pdfBase64 
+ * Envía correos de publicación de propiedad:
+ * - Cliente (dueño)
+ * - Asesor inmobiliario
  */
-async function sendPropertyPdfEmail({ toList, subject, html, pdfBase64 }) {
-  if (!toList || toList.length === 0) {
-    throw new Error('No hay destinatarios para enviar el correo.');
+async function sendPropertyPdfEmail({
+  toList,
+  pdfBase64,
+  nombreAsesor = 'Tu asesor',
+}) {
+  if (!toList || toList.length < 2) {
+    throw new Error('Se requieren dos correos: cliente y asesor.');
   }
 
+  const [correoCliente, correoAsesor] = toList;
+
+  // 📎 Adjuntar PDF
   const attachments = [];
   if (pdfBase64) {
     const base64Data = pdfBase64.includes('base64,')
@@ -32,17 +28,55 @@ async function sendPropertyPdfEmail({ toList, subject, html, pdfBase64 }) {
     attachments.push({
       filename: 'ficha-propiedad.pdf',
       content: base64Data,
-      encoding: 'base64',
-      contentType: 'application/pdf',
     });
   }
 
-  await transporter.sendMail({
-    from: `"Publicación Ai24" <${process.env.SMTP_USER}>`,
-    to: toList.filter(Boolean),
-    subject,
-    html,
+  // =========================
+  // 📢 CORREO AL CLIENTE
+  // =========================
+  await resend.emails.send({
+    from: 'THRY24 <verificaciones@thry24.com>',
+    to: correoCliente,
+    subject: '📢 ¡Tu propiedad ya está publicada en THRY24!',
+    html: `
+      <h2>📢 ¡Tu propiedad ya está publicada en THRY24!</h2>
+      <p>
+        Tu asesor <b>${correoAsesor}</b> ha subido tu inmueble y ya
+        está disponible para potenciales compradores o arrendadores.
+      </p>
+      <p>👉 Revisa la ficha técnica adjunta a este correo.</p>
+      <br />
+      <p>— Equipo THRY24</p>
+    `,
     attachments,
+  });
+
+  // =========================
+  // 🏡 CORREO AL ASESOR
+  // =========================
+  await resend.emails.send({
+    from: 'THRY24 <verificaciones@thry24.com>',
+    to: correoAsesor,
+    subject: '🏡 Propiedad dada de alta exitosamente en THRY24',
+    html: `
+      <h2>🏡 ¡Felicidades!</h2>
+      <p>
+        Has dado de alta la propiedad de tu cliente en <b>THRY24</b>.
+      </p>
+      <p>
+        Ahora el inmueble está listo para promoción dentro del
+        portal publicitario.
+      </p>
+      <p>📎 Se adjunta la ficha técnica en PDF.</p>
+      <br />
+      <p>— Equipo THRY24</p>
+    `,
+    attachments,
+  });
+
+  console.log('✅ Correos enviados correctamente:', {
+    cliente: correoCliente,
+    asesor: correoAsesor,
   });
 }
 

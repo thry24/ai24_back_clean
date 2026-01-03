@@ -209,6 +209,18 @@ exports.generarFichaPDF = async (req, res) => {
   }
 };
 
+function obtenerNombreAsesor({ propiedad, usuario }) {
+  if (propiedad?.agente?.nombre) {
+    return `${propiedad.agente.nombre} ${propiedad.agente.apellido || ''}`.trim();
+  }
+
+  if (usuario?.nombre) {
+    return `${usuario.nombre} ${usuario.apellido || ''}`.trim();
+  }
+
+  return 'Tu asesor';
+}
+
 
 exports.agregarPropiedad = async (req, res) => {
   try {
@@ -737,14 +749,17 @@ exports.publicarPropiedad = async (req, res) => {
       return res.status(404).json({ msg: "Propiedad no encontrada." });
     }
 
-    if (propiedad.estadoPublicacion === "no publicada") {
+    const estabaPublicada = propiedad.estadoPublicacion === "publicada";
+
+    if (!estabaPublicada) {
       if (
         !propiedad.imagenPrincipal ||
         !propiedad.imagenes ||
         propiedad.imagenes.length === 0
       ) {
         return res.status(400).json({
-          msg: "Para publicar esta propiedad debes agregar al menos una imagen principal y otras imágenes.",
+          msg:
+            "Para publicar esta propiedad debes agregar al menos una imagen principal y otras imágenes.",
         });
       }
       propiedad.estadoPublicacion = "publicada";
@@ -754,27 +769,7 @@ exports.publicarPropiedad = async (req, res) => {
 
     await propiedad.save();
 
-    if (propiedad.estadoPublicacion === 'publicada') {
-      const propietarioEmail = propiedad?.datosPropietario?.email;
-      const usuarioActivoEmail = req?.user?.email || req?.user?.correo;
-
-      const html = `
-        <h3>Propiedad ${propiedad.clave} publicada</h3>
-        <p>Se adjunta la ficha en PDF para su referencia.</p>
-      `;
-
-      try {
-        await sendPropertyPdfEmail({
-          toList: [propietarioEmail, usuarioActivoEmail],
-          subject: `Propiedad ${propiedad.clave} publicada`,
-          html,
-          pdfBase64,
-        });
-      } catch (mailErr) {
-        console.error('Error enviando correo con PDF:', mailErr);
-      }
-    }
-
+    // ✅ RESPONDER AL FRONTEND PRIMERO
     res.status(200).json({
       msg: `Propiedad ${
         propiedad.estadoPublicacion === "publicada"
@@ -783,6 +778,26 @@ exports.publicarPropiedad = async (req, res) => {
       } exitosamente.`,
       propiedad,
     });
+
+    // 📧 ENVIAR CORREO EN SEGUNDO PLANO
+    if (!estabaPublicada && propiedad.estadoPublicacion === "publicada") {
+      const propietarioEmail = propiedad?.datosPropietario?.email;
+      const usuarioActivoEmail = req?.user?.email || req?.user?.correo;
+
+      const correos = [propietarioEmail, usuarioActivoEmail].filter(Boolean);
+
+      if (correos.length >= 2) {
+        sendPropertyPdfEmail({
+          toList: correos,
+          pdfBase64,
+        }).catch(err => {
+          console.error("❌ Error enviando correo de publicación:", err);
+        });
+      } else {
+        console.warn("⚠️ Correos insuficientes para envío:", correos);
+      }
+    }
+
   } catch (err) {
     console.error("Error al cambiar estado de publicación:", err);
     res
@@ -790,6 +805,7 @@ exports.publicarPropiedad = async (req, res) => {
       .json({ msg: "Error interno al actualizar la publicación." });
   }
 };
+
 
 exports.actualizarEstadoPropiedad = async (req, res) => {
   try {

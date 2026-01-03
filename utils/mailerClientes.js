@@ -1,18 +1,8 @@
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.hostinger.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER, // contacto@thry24.com.mx
-    pass: process.env.EMAIL_PASS
-  }
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-/**
- * 📧 Email para cliente creado por agente
- */
+
 async function enviarAltaCliente({
   to,
   nombreCliente,
@@ -20,10 +10,10 @@ async function enviarAltaCliente({
   correo,
   password
 }) {
-  return transporter.sendMail({
-    from: `"Thry24" <${process.env.EMAIL_USER}>`,
+  const { error } = await resend.emails.send({
+    from: 'Thry24 <verificaciones@thry24.com>', 
     to,
-    subject: "Bienvenido a Thry24 🚀",
+    subject: 'Bienvenido a Thry24 🚀',
     html: `
       <h2>¡Bienvenido a Thry24!</h2>
       <p>Hola <b>${nombreCliente}</b>,</p>
@@ -51,6 +41,13 @@ async function enviarAltaCliente({
       <p>— Equipo Thry24</p>
     `
   });
+
+  if (error) {
+    console.error('❌ RESEND ERROR:', error);
+    throw error;
+  }
+
+  console.log('✅ Email enviado correctamente a', to);
 }
 
 module.exports = { enviarAltaCliente };

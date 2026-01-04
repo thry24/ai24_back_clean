@@ -5,6 +5,8 @@ const Busqueda = require("../models/Busqueda");
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
+const { crearSeguimientoSiNoExiste } = require('./seguimientos.helper');
+
 const { Storage } = require("@google-cloud/storage");
 const PdfPrinter = require("pdfmake");
 const {
@@ -348,24 +350,26 @@ exports.agregarPropiedad = async (req, res) => {
 
 
 async function generarClave(direccion) {
-  const estado = direccion?.estado?.substring(0, 3).toUpperCase() || "XXX";
-  const municipio =
-    direccion?.municipio?.substring(0, 3).toUpperCase() || "XXX";
+  // 3 letras del estado (o usa municipio si prefieres)
+  const lugar =
+    direccion?.estado?.substring(0, 3).toUpperCase() || "XXX";
 
-  const baseClave = `ai24-${estado}-${municipio}`;
+  // Prefijo nuevo
+  const baseClave = `thry24-${lugar}`;
 
   let claveUnica;
   let intentos = 0;
 
   do {
-    const sufijo = generarSufijoAleatorio(4); // Por ejemplo: X9T7
+    const sufijo = generarSufijoAleatorio(4); // Ej: A9X2
     claveUnica = `${baseClave}-${sufijo}`;
     intentos++;
-    if (intentos > 10) break; // para evitar bucle eterno
+    if (intentos > 10) break;
   } while (await Propiedad.exists({ clave: claveUnica }));
 
   return claveUnica;
 }
+
 
 function generarSufijoAleatorio(longitud = 4) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -896,7 +900,6 @@ exports.incrementarVisita = async (req, res) => {
 exports.incrementarContacto = async (req, res) => {
   try {
     const { id } = req.params;
-
     const {
       canal,
       citaNombre,
@@ -904,92 +907,76 @@ exports.incrementarContacto = async (req, res) => {
       citaFecha,
       citaHora,
       citaMensaje,
-      textoFinal,
-      tipoCliente // 👈 Si viene desde front lo guardamos
+      tipoCliente,
     } = req.body || {};
 
     const user = req.user || {};
-    const clienteEmail = (user.email || user.correo || citaEmail || '').toLowerCase();
+
+    const clienteEmail = (
+      user.email ||
+      user.correo ||
+      citaEmail
+    )?.toLowerCase().trim();
+
+    if (!clienteEmail) {
+      return res.status(400).json({ msg: 'Email de cliente requerido' });
+    }
 
     const prop = await Propiedad.findById(id)
-      .populate("agente", "email correo nombre apellidos")
+      .populate('agente', 'email correo nombre')
       .lean();
-    if (!prop) return res.status(404).json({ msg: "Propiedad no encontrada" });
 
-    const agenteEmail = (prop.agente?.email || prop.agente?.correo || '').toLowerCase();
+    if (!prop) {
+      return res.status(404).json({ msg: 'Propiedad no encontrada' });
+    }
 
-    // ✅ Incrementar leads generados en la propiedad
-    await Propiedad.findByIdAndUpdate(
-      id,
-      { $inc: { contactosGenerados: 1 } },
-      { new: true }
-    );
+    const agenteEmail = (
+      prop.agente?.email ||
+      prop.agente?.correo
+    )?.toLowerCase().trim();
 
-    // ✅ Guardar auto-mensaje en chat
-    const texto = textoFinal || `
-Hola, me interesa la propiedad ${prop.clave || prop._id}.
-¿Podemos agendar visita?
+    // 📊 contador
+    await Propiedad.findByIdAndUpdate(id, {
+      $inc: { contactosGenerados: 1 },
+    });
 
-📅 ${citaFecha || 'N/A'} ${citaHora || ''}
-📝 ${citaMensaje || 'N/A'}
-(Canal: ${canal || 'desconocido'})
-    `.trim();
-
-    const chatAuto = await Mensaje.create({
+    // 💬 mensaje automático
+    await Mensaje.create({
       emisorEmail: clienteEmail,
       receptorEmail: agenteEmail,
-      mensaje: texto,
+      mensaje: `
+Interés en propiedad ${prop.clave}
+
+📅 ${citaFecha || 'N/A'} ${citaHora || ''}
+📝 ${citaMensaje || ''}
+      `.trim(),
       propiedadId: prop._id,
-      propiedadClave: prop.clave || '',
+      propiedadClave: prop.clave,
       fecha: new Date(),
-      leido: false,
-      nombreCliente: citaNombre || user.nombre || '',
+      nombreCliente: citaNombre || user.nombre || 'Cliente',
       participantsHash: hashParticipants(clienteEmail, agenteEmail),
     });
 
-    // ✅ Crear o actualizar Seguimiento
-    let seg = await Seguimiento.findOne({
+    // 🧠 SEGUIMIENTO (AQUÍ ES DONDE DEBE IR)
+    const seguimiento = await crearSeguimientoSiNoExiste({
       clienteEmail,
-      agenteEmail
+      clienteNombre: citaNombre || user.nombre,
+      agenteEmail,
+      tipoCliente,
+      tipoOperacion: prop.tipoOperacion,
+      propiedadId: prop._id,
+      origen: canal || 'EMAIL',
     });
-
-    if (!seg) {
-      seg = await Seguimiento.create({
-        clienteEmail,
-        clienteNombre: citaNombre || user.nombre || 'Cliente',
-        agenteEmail,
-        tipoCliente: tipoCliente || null, // 👈 Nuevo!
-        tipoOperacion: (prop.tipoOperacion || '').toUpperCase(),
-        propiedadId: prop._id,
-        origen: canal || 'mensajes',
-        fechaPrimerContacto: new Date(),
-      });
-    } else {
-      if (!seg.propiedadId) seg.propiedadId = prop._id;
-      if (!seg.tipoCliente && tipoCliente) seg.tipoCliente = tipoCliente;
-      await seg.save();
-    }
-
-    // ✅ Broadcast socket → Agente recibe "🔥 Nuevo Lead"
-    const io = req.app.get("io");
-    if (io) {
-      io.to(agenteEmail).emit("nuevoLead", {
-        propiedadClave: prop.clave || prop._id,
-        clienteEmail,
-        clienteNombre: citaNombre || user.nombre || 'Cliente',
-      });
-    }
 
     return res.json({
       ok: true,
-      message: "Lead registrado correctamente ✅",
-      chatAuto: { ok: true, mensajeId: chatAuto._id },
-      seguimiento: seg,
+      msg: 'Lead registrado correctamente',
+      seguimiento,
     });
 
   } catch (err) {
-    console.error("incrementarContacto error:", err);
-    res.status(500).json({ msg: "Error interno al registrar lead" });
+    console.error('❌ incrementarContacto error:', err);
+    res.status(500).json({ msg: 'Error interno al registrar contacto' });
   }
 };
 

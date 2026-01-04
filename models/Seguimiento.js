@@ -10,7 +10,7 @@ const seguimientoSchema = new mongoose.Schema(
     // 🔹 Tipo de operación — acepta cualquier caso (venta/VENTA)
     tipoOperacion: {
       type: String,
-      enum: ['VENTA', 'RENTA', ''],
+      enum: ['VENTA', 'RENTA', 'VENTA/RENTA'],
       default: '',
       set: (v) => (v ? v.toUpperCase() : ''), // 👈 convierte automáticamente a mayúsculas
     },

@@ -91,6 +91,7 @@ const propiedadSchema = new mongoose.Schema({
       salaTV: Boolean,
       patio: Boolean,
       estudio: Boolean,
+      roofGarden: Boolean,
       areaLavado: {
         activo: { type: Boolean, default: false },
         tipo: {
@@ -143,13 +144,17 @@ const propiedadSchema = new mongoose.Schema({
       plaza: String,
       pasillo: String,
       planta: String,
+      superficie: String,
       m2Frente: String,
       m2Fondo: String,
       restriccionGiro: String,
       giro: String,
       seguridad: Boolean,
+      elevador: Boolean,
       costoMantenimiento: Number,    // nuevo
-      entrega: String  
+      entrega: String, 
+      estacionamiento: String,
+      tipoEstacionamiento: String,
     },
 
     bodega: {
@@ -227,7 +232,9 @@ const propiedadSchema = new mongoose.Schema({
       aireAcondicionado: Boolean,
       comedor: Boolean,
       corporativo: Boolean,
+      seguridad: Boolean,
       banos: Number,
+
     },
   },
 

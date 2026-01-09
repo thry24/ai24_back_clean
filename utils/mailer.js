@@ -26,5 +26,35 @@ async function enviarCredenciales(to, nombreInmo, correo, password) {
     html
   });
 }
+async function enviarSolicitudColaboracion({
+  to,
+  agenteNombre,
+  propiedadClave,
+  imagenPropiedad,
+}) {
+  const html = `
+    <h2>🤝 Nueva solicitud de colaboración</h2>
 
-module.exports = { enviarCredenciales };
+    <p>
+      El agente <b>${agenteNombre}</b> quiere colaborar contigo
+      en la propiedad:
+    </p>
+
+    <p><b>${propiedadClave}</b></p>
+
+    ${imagenPropiedad ? `<img src="${imagenPropiedad}" width="300"/>` : ''}
+
+    <p>
+      Ingresa a <a href="https://thry24.com">Thry24</a> para aceptar o rechazar la colaboración.
+    </p>
+  `;
+
+  return resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to: [to],
+    subject: 'Nueva solicitud de colaboración en Thry24',
+    html,
+  });
+}
+
+module.exports = { enviarCredenciales, enviarSolicitudColaboracion };

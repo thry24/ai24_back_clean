@@ -941,21 +941,37 @@ exports.incrementarContacto = async (req, res) => {
     });
 
     // 💬 mensaje automático
+    const mensajeAuto = `
+    Hola, estoy interesado en la propiedad ${prop.clave}.
+    ¿Podrías brindarme más información?
+    `.trim();
+
     await Mensaje.create({
       emisorEmail: clienteEmail,
       receptorEmail: agenteEmail,
-      mensaje: `
-Interés en propiedad ${prop.clave}
 
-📅 ${citaFecha || 'N/A'} ${citaHora || ''}
-📝 ${citaMensaje || ''}
-      `.trim(),
+      // 👉 usa el mensaje del cliente o el automático
+      mensaje: (citaMensaje && citaMensaje.trim()) || mensajeAuto,
+
       propiedadId: prop._id,
       propiedadClave: prop.clave,
+
+      // 🔥 SNAPSHOT PARA EL CHAT
+      propiedadSnapshot: {
+        id: prop._id,
+        clave: prop.clave,
+        imagen: prop.imagenPrincipal || prop.imagenes?.[0] || null,
+        precio: prop.precio,
+        tipoOperacion: prop.tipoOperacion,
+        ubicacion: `${prop.direccion?.municipio || ''}, ${prop.direccion?.estado || ''}`,
+      },
+
       fecha: new Date(),
       nombreCliente: citaNombre || user.nombre || 'Cliente',
       participantsHash: hashParticipants(clienteEmail, agenteEmail),
     });
+
+
 
     // 🧠 SEGUIMIENTO (AQUÍ ES DONDE DEBE IR)
     const seguimiento = await crearSeguimientoSiNoExiste({

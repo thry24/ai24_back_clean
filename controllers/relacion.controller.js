@@ -5,6 +5,45 @@ const { resend } = require("../config/resend");
 const { enviarAltaCliente } = require('../utils/mailerClientes');
 
 // =========================
+// 🔹 OBTENER CLIENTES DEL AGENTE (DIRECTORIO)
+// =========================
+// =========================
+// 🔹 OBTENER CLIENTES DEL AGENTE (SOLO CLIENTES)
+// =========================
+exports.obtenerClientesDelAgente = async (req, res) => {
+  try {
+    const agenteId = req.params.agenteId;
+
+    const relaciones = await Relacion.find({ agente: agenteId })
+      .populate({
+        path: "cliente",
+        match: { rol: "cliente" }, // 👈 FILTRO CLAVE
+        select: "nombre correo telefono tipoCliente"
+      })
+      .lean();
+
+    const clientes = relaciones
+      .filter(r => r.cliente) // 🔥 elimina agentes automáticamente
+      .map(r => ({
+        _id: r.cliente._id,
+        nombre: r.cliente.nombre,
+        email: r.cliente.correo,
+        telefono: r.cliente.telefono || "—",
+        tipoCliente: r.tipoCliente || r.cliente.tipoCliente || "—",
+        fechaRegistro: r.createdAt,
+        origen: "relacion",
+        status: "activo",
+      }));
+
+    res.json(clientes);
+  } catch (error) {
+    console.error("❌ Error obtenerClientesDelAgente:", error);
+    res.status(500).json({ msg: "Error obteniendo clientes" });
+  }
+};
+
+
+// =========================
 // 🔹 OBTENER RELACIÓN
 // =========================
 exports.obtenerRelacion = async (req, res) => {

@@ -3,6 +3,8 @@ const User = require("../models/User");
 const Propiedad = require("../models/Propiedad");
 const Seguimiento = require("../models/Seguimiento");
 const { sendColaboracionNotificacion } = require("../utils/sendVerificationCode");
+const { enviarSolicitudColaboracion } = require('../utils/mailerColaboraciones');
+
 
 exports.crearColaboracion = async (req, res) => {
   try {
@@ -58,6 +60,16 @@ exports.crearColaboracion = async (req, res) => {
       estado: tipoColaboracion === "externo" ? "pendiente" : "aceptada",
     });
 
+     // 📧 ENVIAR CORREO SOLO SI ES EXTERNO Y ESTÁ PENDIENTE
+    if (tipoColaboracion === 'externo' && colaboradorEmail) {
+      await enviarSolicitudColaboracion({
+        to: colaboradorEmail,
+        nombreColaborador: colaboradorNombreFinal,
+        nombreAgente: agente.nombre,
+        nombrePropiedad: propiedad?.clave || 'Propiedad sin nombre',
+        imagenPropiedad: propiedad?.imagenPrincipal || '',
+      });
+    }
     // 🟢 NUEVO: si hay propiedad asociada, incrementa los leads generados
     if (propiedadId) {
       await Propiedad.findByIdAndUpdate(propiedadId, {
@@ -87,7 +99,6 @@ exports.crearColaboracion = async (req, res) => {
       nuevaColaboracion.seguimiento = seguimientoExistente._id;
       await nuevaColaboracion.save();
     }
-
     // ✅ Respuesta elegante para frontend
     res.status(201).json({
       ok: true,
@@ -107,6 +118,7 @@ exports.crearColaboracion = async (req, res) => {
     res.status(500).json({ ok: false, message: msg });
   }
 };
+
 exports.actualizarEstadoColaboracion = async (req, res) => {
   const { id } = req.params;
   const { estado } = req.body; // 'ganado' o 'perdido'
@@ -352,59 +364,67 @@ exports.obtenerPorAgente = async (req, res) => {
         const nombreVisible = soyAgente
           ? (colaborador.nombre || c.nombreColaborador || 'Colaborador')
           : nombreAgente;
-            return {
-              _id: c._id,
+          return {
+            _id: c._id,
 
-              // --- Propiedad ---
-              nombrePropiedad: propiedad.clave || c.nombrePropiedad || 'Sin clave',
-              tipoPropiedad: propiedad.tipoPropiedad || 'Sin tipo',
-              imagenPropiedad:
-                propiedad.imagenPrincipal ||
-                'https://www.svgrepo.com/show/508699/home-4.svg',
-              fechaAlta: propiedad.fechaCreacion || c.createdAt,
+            // ✅ FECHA REAL DE LA COLABORACIÓN
+            fechaAlta: c.createdAt,
 
-              // --- Datos principales ---
-              tipoColaboracion: c.tipoColaboracion || '—',
-              comision: c.comision || 0,
-              tipoOperacion: c.tipoOperacion || propiedad.tipoOperacion || '—',
-              estado: c.estado || 'pendiente',
+            // --- Propiedad ---
+            nombrePropiedad: propiedad.clave || c.nombrePropiedad || 'Sin clave',
+            tipoPropiedad: propiedad.tipoPropiedad || 'Sin tipo',
+            imagenPropiedad:
+              propiedad.imagenPrincipal ||
+              'https://www.svgrepo.com/show/508699/home-4.svg',
 
-              // --- Métricas ---
-              agentesInvolucrados,
-              leadsGenerados: leadsTotales,
-              leadsGanados,
-              leadsPerdidos,
+            // (opcional) fecha de la propiedad, con OTRO nombre
+            fechaPropiedad: propiedad.fechaCreacion || null,
 
-              // --- Participantes ---
-              colaborador: {
-                nombre: colaborador.nombre || c.nombreColaborador || 'Sin nombre',
-                correo: colaborador.correo || c.colaboradorEmail || '—',
-                fotoPerfil:
-                  colaborador.fotoPerfil ||
-                  'https://www.svgrepo.com/show/452030/avatar-default.svg',
-              },
-              agentePrincipal: {
-                nombre: nombreAgente,
-                correo: agentePrincipal.correo || '—',
-                fotoPerfil:
-                  agentePrincipal.fotoPerfil ||
-                  'https://www.svgrepo.com/show/452030/avatar-default.svg',
-              },
+            // --- Datos principales ---
+            tipoColaboracion: c.tipoColaboracion || '—',
+            comision: c.comision || 0,
+            tipoOperacion: c.tipoOperacion || propiedad.tipoOperacion || '—',
+            estado: c.estado || 'pendiente',
 
-              // --- NUEVO: campos para el frontend ---
-              agentePrincipalNombre: nombreAgente,
-              agentePrincipalFoto:
-                agentePrincipal.fotoPerfil ||
-                'https://www.svgrepo.com/show/452030/avatar-default.svg',
-              nombreColaborador:
-                colaborador.nombre || c.nombreColaborador || 'Sin nombre',
-              colaboradorFoto:
+            // --- Métricas ---
+            agentesInvolucrados,
+            leadsGenerados: leadsTotales,
+            leadsGanados,
+            leadsPerdidos,
+
+            // --- Participantes ---
+            colaborador: {
+              nombre: colaborador.nombre || c.nombreColaborador || 'Sin nombre',
+              correo: colaborador.correo || c.colaboradorEmail || '—',
+              fotoPerfil:
                 colaborador.fotoPerfil ||
                 'https://www.svgrepo.com/show/452030/avatar-default.svg',
+            },
 
-              nombreAgente,
-              nombreVisible,
-            };
+            agentePrincipal: {
+              nombre: nombreAgente,
+              correo: agentePrincipal.correo || '—',
+              fotoPerfil:
+                agentePrincipal.fotoPerfil ||
+                'https://www.svgrepo.com/show/452030/avatar-default.svg',
+            },
+
+            // --- Frontend helpers ---
+            agentePrincipalNombre: nombreAgente,
+            agentePrincipalFoto:
+              agentePrincipal.fotoPerfil ||
+              'https://www.svgrepo.com/show/452030/avatar-default.svg',
+
+            nombreColaborador:
+              colaborador.nombre || c.nombreColaborador || 'Sin nombre',
+
+            colaboradorFoto:
+              colaborador.fotoPerfil ||
+              'https://www.svgrepo.com/show/452030/avatar-default.svg',
+
+            nombreAgente,
+            nombreVisible,
+          };
       })
     );
 

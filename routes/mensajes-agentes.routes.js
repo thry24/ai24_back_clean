@@ -3,14 +3,16 @@ const router = express.Router();
 const { verificarToken } = require('../middlewares/auth');
 const mensajesCtrl = require('../controllers/mensajesAgentes.controller');
 
-// 🟢 Crear mensaje nuevo
+// 📩 Crear mensaje (CONTACTAR)
 router.post('/', verificarToken, mensajesCtrl.crearMensaje);
 
-// 🟢 Obtener todos los mensajes donde participa el agente logueado
+// 📩 Obtener mensajes (inbox)
 router.get('/', verificarToken, mensajesCtrl.obtenerMensajes);
 
-// 🟢 Obtener conversaciones únicas (agentes con los que he hablado)
-router.get('/mensajes-agentes', verificarToken, mensajesCtrl.obtenerMensajesAgentes);
+// 👥 Obtener contactos
+router.get('/contactos', verificarToken, mensajesCtrl.obtenerContactos);
 
-router.get("/agentes/buscar", mensajesCtrl.buscarAgentePorNombre);
+// 🔍 Buscar agente por nombre
+router.get('/agentes/buscar', verificarToken, mensajesCtrl.buscarAgentePorNombre);
+
 module.exports = router;

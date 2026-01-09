@@ -12,4 +12,11 @@ router.post("/actualizar", verifyToken, relacionController.actualizarTipoCliente
 // Obtener relación por email
 router.get("/:clienteEmail", verifyToken, relacionController.obtenerRelacion);
 
+// Obtener todos los clientes del agente (DIRECTORIO)
+router.get(
+  "/agente/:agenteId/clientes",
+  verifyToken,
+  relacionController.obtenerClientesDelAgente
+);
+
 module.exports = router;

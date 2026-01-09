@@ -3,35 +3,80 @@ const User = require('../models/User'); // Asegúrate de importar tu modelo de u
 
 exports.crearMensaje = async (req, res) => {
   try {
-    const { nombreAgente, nombreCliente, texto, mensajeOriginalId } = req.body;
+    const remitente = await User.findById(req.user._id).lean();
+    const destinatario = await User.findById(req.body.destinatarioId).lean();
 
-    if (!req.user?.id) {
-      return res.status(401).json({ ok: false, message: 'Usuario no autenticado' });
+    if (!remitente || !destinatario) {
+      return res.status(404).json({ msg: 'Usuario no encontrado' });
     }
 
-    // Buscar los correos reales desde la BD
-    const agente = await User.findOne({ nombre: nombreAgente });
-    const cliente = await User.findOne({ nombre: nombreCliente });
+    const esRemitenteAgente = remitente.rol === 'agente';
 
-    // Crear el mensaje con todos los campos necesarios
-    const nuevoMensaje = new MensajeAgente({
-      ...req.body,
-      emailAgente: agente?.correo || agente?.email || '',
-      emailCliente: cliente?.correo || cliente?.email || '',
-      remitenteId: req.user.id, // ✅ ahora sí se asigna correctamente
-      fecha: new Date(),
+    const mensaje = await MensajeAgente.create({
+      // 🔥 ROLES CLAROS
+      nombreAgente: esRemitenteAgente ? remitente.nombre : destinatario.nombre,
+      emailAgente: esRemitenteAgente ? remitente.correo : destinatario.correo,
+      telefonoAgente: esRemitenteAgente ? remitente.telefono : destinatario.telefono,
+      fotoAgente: esRemitenteAgente ? remitente.fotoPerfil : destinatario.fotoPerfil,
+
+      nombreCliente: esRemitenteAgente ? destinatario.nombre : remitente.nombre,
+      emailCliente: esRemitenteAgente ? destinatario.correo : remitente.correo,
+      telefonoCliente: esRemitenteAgente ? destinatario.telefono : remitente.telefono,
+      fotoCliente: esRemitenteAgente ? destinatario.fotoPerfil : remitente.fotoPerfil,
+
+      texto: req.body.texto,
+      tipoOperacion: req.body.tipoOperacion || '',
+      ubicacion: req.body.ubicacion || '',
+
+      remitenteId: remitente._id,
+      fecha: new Date()
     });
 
-    await nuevoMensaje.save();
+    res.json(mensaje);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Error al crear mensaje' });
+  }
+};
+exports.obtenerContactos = async (req, res) => {
+  try {
+    const email = (req.user.correo || req.user.email).toLowerCase();
 
-    res.status(201).json({
-      ok: true,
-      message: 'Mensaje enviado correctamente',
-      data: nuevoMensaje,
+    const mensajes = await MensajeAgente.find({
+      $or: [
+        { emailAgente: email },
+        { emailCliente: email }
+      ]
     });
-  } catch (error) {
-    console.error('❌ Error al crear mensaje:', error);
-    res.status(500).json({ ok: false, message: 'Error al crear mensaje' });
+
+    const mapa = new Map();
+
+    for (const m of mensajes) {
+      const soyAgente = m.emailAgente?.toLowerCase() === email;
+
+      const contacto = soyAgente
+        ? {
+            nombre: m.nombreCliente,
+            correo: m.emailCliente,
+            telefono: m.telefonoCliente,
+            fotoPerfil: m.fotoCliente
+          }
+        : {
+            nombre: m.nombreAgente,
+            correo: m.emailAgente,
+            telefono: m.telefonoAgente,
+            fotoPerfil: m.fotoAgente
+          };
+
+      if (contacto.correo && !mapa.has(contacto.correo)) {
+        mapa.set(contacto.correo, contacto);
+      }
+    }
+
+    res.json(Array.from(mapa.values()));
+  } catch (e) {
+    console.error('❌ Error contactos:', e);
+    res.status(500).json({ msg: 'Error al obtener contactos' });
   }
 };
 

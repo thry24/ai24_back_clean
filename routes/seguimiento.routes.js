@@ -47,6 +47,7 @@ router.get(
   ctrl.getSeguimientosPorAgente
 );
 
+
 /**
  * ================================
  *  ACTUALIZAR SEGUIMIENTO

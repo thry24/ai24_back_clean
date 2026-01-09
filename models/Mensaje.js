@@ -17,7 +17,19 @@ const MensajeSchema = new mongoose.Schema(
 
     propiedadId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Propiedad' },
     propiedadClave: { type: String },
-    participantsHash: { type: String, index: true },
+
+    // 🔥 NUEVO: SNAPSHOT PARA VISTA PREVIA
+    propiedadSnapshot: {
+      id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Propiedad',
+      },
+      clave: String,
+      imagen: String,
+      precio: Number,
+      tipoOperacion: String,
+      ubicacion: String,
+    },
   },
   { timestamps: true }
 );

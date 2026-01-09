@@ -2,6 +2,7 @@ const Seguimiento = require("../models/Seguimiento");
 const Relacion = require('../models/RelacionAgenteCliente'); // 👈 asegúrate de importar tu modelo de relación
 const Propiedad = require("../models/Propiedad"); 
 const User = require("../models/User"); // 👈 tu modelo real
+const { resolverTipoOperacion, calcularEstatus, aplicarCierreAutomatico } = require('./seguimiento.logic');
 exports.crearOObtenerSeguimiento = async (req, res) => {
   try {
     const { clienteEmail, agenteEmail } = req.body;
@@ -350,3 +351,174 @@ exports.getSeguimientosDashboardInmobiliaria = async (req, res) => {
   }
 };
 
+
+
+// ✅ Crear/Upsert desde contacto (MENSAJES)
+exports.upsertDesdeContacto = async ({ clienteEmail, clienteNombre, agenteEmail, tipoCliente, propiedad, origen }) => {
+  const propiedadTipoOperacion = (propiedad?.tipoOperacion || '').toUpperCase(); // puede ser VENTA/RENTA
+  const tipoOperacion = resolverTipoOperacion({ tipoCliente, propiedadTipoOperacion });
+
+  const query = { clienteEmail, agenteEmail, propiedadId: propiedad._id };
+
+  const update = {
+    $setOnInsert: { fechaPrimerContacto: new Date(), estadoFinal: 'EN PROCESO' },
+    $set: {
+      clienteNombre: clienteNombre || '',
+      tipoCliente: tipoCliente || 'cliente',
+      origen: (origen || 'MENSAJES').toUpperCase(),
+      propiedadTipoOperacion,
+    },
+  };
+
+  if (tipoOperacion) update.$set.tipoOperacion = tipoOperacion;
+
+  const seg = await Seguimiento.findOneAndUpdate(query, update, { new: true, upsert: true });
+  seg.estatus = calcularEstatus(seg);
+  aplicarCierreAutomatico(seg);
+  await seg.save();
+
+  return seg;
+};
+
+// ✅ Crear/Upsert desde colaboración (COLABORACIONES)
+// Recomendación: si colaboración no tiene propiedad, crea seguimiento SIN propiedadId
+exports.upsertDesdeColaboracion = async ({ agenteEmail, clienteEmail, clienteNombre, tipoCliente }) => {
+  const query = { clienteEmail, agenteEmail, propiedadId: null };
+
+  const update = {
+    $setOnInsert: { fechaPrimerContacto: new Date(), estadoFinal: 'EN PROCESO' },
+    $set: {
+      clienteNombre: clienteNombre || '',
+      tipoCliente: tipoCliente || 'agente',
+      origen: 'COLABORACIONES',
+      // aquí normalmente NO hay propiedad, así que no se define tipoOperacion a menos que tú lo quieras
+    },
+  };
+
+  const seg = await Seguimiento.findOneAndUpdate(query, update, { new: true, upsert: true });
+  seg.estatus = calcularEstatus(seg);
+  await seg.save();
+  return seg;
+};
+
+// ✅ Listar por agente
+exports.getByAgente = async (req, res) => {
+  try {
+    const agenteEmail = decodeURIComponent(req.params.agenteEmail || '').toLowerCase().trim();
+    const segs = await Seguimiento.find({ agenteEmail }).sort({ updatedAt: -1 });
+    res.json(segs);
+  } catch (e) {
+    res.status(500).json({ msg: 'Error obteniendo seguimientos' });
+  }
+};
+
+// ✅ Buscar por clienteEmail + propiedadId (para no duplicar)
+exports.getByClienteYPropiedad = async (req, res) => {
+  try {
+    const clienteEmail = (req.query.clienteEmail || '').toLowerCase().trim();
+    const propiedadId = req.query.propiedadId || null;
+    const q = { clienteEmail };
+    if (propiedadId) q.propiedadId = propiedadId;
+
+    const segs = await Seguimiento.find(q).sort({ updatedAt: -1 });
+    res.json(segs);
+  } catch (e) {
+    res.status(500).json({ msg: 'Error consultando seguimientos' });
+  }
+};
+
+// ✅ Aplicar acción (checkbox/botón) con fecha automática
+exports.aplicarAccion = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { accion, valor, motivo } = req.body || {};
+
+    const seg = await Seguimiento.findById(id);
+    if (!seg) return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+
+    const now = new Date();
+
+    switch (accion) {
+      // --------- COMUN -----------
+      case 'SET_FECHA_CITA':
+        seg.fechaCita = seg.fechaCita || now;
+        break;
+
+      case 'SET_FECHA_RECORRIDO':
+        seg.fechaRecorrido = seg.fechaRecorrido || now;
+        break;
+
+      // --------- VENTA -----------
+      case 'GENERAR_CARTA_INTENCION':
+        seg.fechaCarta = seg.fechaCarta || now;
+        break;
+
+      case 'DOCS_COMPLETOS_VENTA':
+        seg.docsCompletos = !!valor;
+        seg.fechaDocsCompletos = valor ? (seg.fechaDocsCompletos || now) : null;
+        break;
+
+      case 'SET_FECHA_NOTARIA':
+        seg.fechaNotaria = seg.fechaNotaria || now;
+        break;
+
+      case 'SET_FECHA_FIRMA_VENTA':
+        seg.fechaFirma = seg.fechaFirma || now;
+        break;
+
+      // --------- RENTA -----------
+      case 'RECORRIDO_NO_SE_DIO':
+        seg.recorridoNoSeDio = !!valor;
+        if (!valor) {
+          seg.fechaSegundaRetroalimentacion = null;
+          seg.fechaSegundoRecorrido = null;
+        }
+        break;
+
+      case 'SEGUNDA_RETROALIMENTACION':
+        seg.fechaSegundaRetroalimentacion = seg.fechaSegundaRetroalimentacion || now;
+        break;
+
+      case 'SEGUNDO_RECORRIDO':
+        seg.fechaSegundoRecorrido = seg.fechaSegundoRecorrido || now;
+        break;
+
+      case 'GENERAR_CARTA_OFERTA':
+        seg.fechaCartaOferta = seg.fechaCartaOferta || now;
+        break;
+
+      case 'DOCS_COMPLETOS_RENTA':
+        seg.documentosCompletos = !!valor;
+        seg.fechaDocumentosCompletos = valor ? (seg.fechaDocumentosCompletos || now) : null;
+        break;
+
+      case 'SET_BORRADOR_RENTA':
+        seg.fechaBorradorArr = seg.fechaBorradorArr || now;
+        break;
+
+      case 'SET_FIRMA_RENTA':
+        seg.fechaFirmaArr = seg.fechaFirmaArr || now;
+        break;
+
+      // --------- CIERRE -----------
+      case 'CERRAR_PERDIDO':
+        seg.estadoFinal = 'PERDIDO';
+        seg.fechaCierre = seg.fechaCierre || now;
+        seg.estatusOtraMotivo = motivo || seg.estatusOtraMotivo || 'Sin motivo';
+        break;
+
+      default:
+        return res.status(400).json({ msg: 'Acción inválida' });
+    }
+
+    // recalcular estatus + cierre automático ganado
+    seg.estatus = calcularEstatus(seg);
+    aplicarCierreAutomatico(seg);
+
+    await seg.save();
+    return res.json(seg);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ msg: 'Error aplicando acción' });
+  }
+};

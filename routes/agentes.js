@@ -5,6 +5,8 @@ const Propiedad = require('../models/Propiedad');
 const Inmobiliaria = require('../models/Inmobiliaria');
 const { generarPasswordSeguro, hashPassword } = require('../utils/password');
 const { enviarCredenciales } = require('../utils/mailer');
+const { verifyToken } = require("../middlewares/authMiddleware");
+const agentesController = require("../controllers/agentes.controller");
 
 const router = express.Router();
 
@@ -19,7 +21,7 @@ async function validarPlan(inmobiliariaId) {
   if (hoy > inmo.plan.fechaFin) throw new Error("El plan de esta inmobiliaria ha expirado");
   return inmo;
 }
-
+router.get("/todos", verifyToken, agentesController.obtenerAgentes);
 /**
  * GET /api/agentes?inmobiliaria=<id>&q=<texto>&status=Active|Inactive
  */

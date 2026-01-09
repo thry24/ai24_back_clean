@@ -359,15 +359,48 @@ propiedadSchema.pre("save", function (next) {
     kva: (v) => `${v} KVA`,
     estacionamientos: (v) =>
       `${v} lugar${v > 1 ? "es" : ""} de estacionamiento`,
+
+      areaLavado: (v) => {
+    if (!v || !v.activo) return "";
+    if (v.tipo === "techada") return "Área de lavado techada";
+    if (v.tipo === "sin_techar") return "Área de lavado sin techar";
+    return "Área de lavado";
+  },
+
+  casa: (v) => {
+    if (!v || !v.tipo) return "";
+    const map = {
+      privada: "Casa en privada",
+      calle_abierta: "Casa en calle abierta",
+      condominio: "Casa en condominio",
+      uso_comercial: "Casa de uso comercial",
+    };
+    return map[v.tipo] || "Casa";
+  },
+
+  departamento: (v) => {
+    if (!v) return "";
+    let txt = "Departamento";
+    if (v.nivel === "planta_baja") txt += " en planta baja";
+    if (v.nivel === "planta_alta") txt += " en planta alta";
+    if (v.numeroPiso) txt += `, piso ${v.numeroPiso}`;
+    return txt;
+  },
   };
 
-  for (const key in data) {
-    const valor = data[key];
-    if (valor || typeof valor === "number") {
-      const frase = frases[key] ? frases[key](valor) : "";
-      if (frase) keywords.push(frase);
-    }
-  }
+for (const key in data) {
+  const valor = data[key];
+
+  // ❌ Evitar objetos sin formateador
+  if (typeof valor === "object" && !frases[key]) continue;
+
+  // ❌ Evitar vacíos
+  if (!valor && typeof valor !== "number") continue;
+
+  const frase = frases[key] ? frases[key](valor) : "";
+  if (frase) keywords.push(frase);
+}
+
 
   this.keywords = keywords;
   next();

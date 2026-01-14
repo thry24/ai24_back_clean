@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 
+const Inmobiliaria = require('../models/Inmobiliaria');
+
+
+
 router.post('/', async (req, res) => {
   try {
     const { nombre, logo, ownerId, planNombre } = req.body;
@@ -42,5 +46,40 @@ router.post('/:id/renovar', async (req, res) => {
     res.status(400).json({ error: e.message });
   }
 });
+
+/**
+ * 🔹 Obtener perfil público de inmobiliaria
+ */
+router.get('/:id/perfil', async (req, res) => {
+  try {
+    const inmobiliaria = await Inmobiliaria.findById(req.params.id);
+
+    if (!inmobiliaria) {
+      return res.status(404).json({ error: 'Inmobiliaria no encontrada' });
+    }
+
+    res.json(inmobiliaria);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/**
+ * 🔹 Editar perfil (solo inmobiliaria dueña)
+ */
+router.put('/:id/perfil', async (req, res) => {
+  try {
+    const inmobiliaria = await Inmobiliaria.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+
+    res.json(inmobiliaria);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 module.exports = router;

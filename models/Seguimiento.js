@@ -41,7 +41,7 @@ const seguimientoSchema = new mongoose.Schema(
     // 🔹 Origen del lead — también acepta email/whatsapp sin importar el caso
     origen: {
       type: String,
-      enum: ['MENSAJES', 'COLABORACIONES', 'MANUAL', 'EMAIL', 'WHATSAPP'],
+      enum: ['MENSAJES', 'COLABORACIONES', 'MANUAL', 'EMAIL', 'WHATSAPP', 'MENSAJES-AGENTES'],
       default: 'MANUAL',
       set: (v) => (v ? v.toUpperCase() : 'MANUAL'),
     },

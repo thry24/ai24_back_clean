@@ -1,6 +1,7 @@
 const Cita = require('../models/Cita');
 const Seguimiento = require('../models/Seguimiento');
 const User = require("../models/User"); 
+const { enviarCitaAgendada } = require('../utils/enviarCitaAgendada');
 
 // helper: compone Date real (UTC) con "YYYY-MM-DD" + "HH:mm"
 function parseFechaHora(fechaStr, horaStr) {
@@ -70,11 +71,19 @@ exports.crearCita = async (req, res) => {
       tipoCliente,
       tipoOperacion,
       tipoEvento,
-      fecha, 
-      hora   
+      fecha,
+      hora
     } = req.body;
 
-    if (!seguimientoId || !propiedadId || !agenteEmail || !clienteEmail || !tipoOperacion || !fecha || !hora) {
+    if (
+      !seguimientoId ||
+      !propiedadId ||
+      !agenteEmail ||
+      !clienteEmail ||
+      !tipoOperacion ||
+      !fecha ||
+      !hora
+    ) {
       return res.status(400).json({ msg: 'Campos obligatorios faltantes' });
     }
 
@@ -84,10 +93,19 @@ exports.crearCita = async (req, res) => {
     }
 
     // 🛑 Verificación de solapamiento
-    const yaExiste = await Cita.findOne({ agenteEmail, fecha: fechaReal, hora });
-    if (yaExiste) return res.status(409).json({ msg: 'El agente ya tiene una cita en esa hora' });
+    const yaExiste = await Cita.findOne({
+      agenteEmail,
+      fecha: fechaReal,
+      hora
+    });
 
-    // ✅ Crear cita con campos completos
+    if (yaExiste) {
+      return res
+        .status(409)
+        .json({ msg: 'El agente ya tiene una cita en esa hora' });
+    }
+
+    // ✅ Crear cita
     const cita = await Cita.create({
       seguimientoId,
       propiedadId,
@@ -108,6 +126,21 @@ exports.crearCita = async (req, res) => {
       fechaCita: fechaReal,
       estatus: "Cita programada"
     });
+
+    // 📧 ENVIAR EMAIL AL CLIENTE
+    try {
+      await enviarCitaAgendada({
+        to: clienteEmail,
+        nombreCliente: clienteNombre,
+        nombreAgente: agenteNombre,
+        fecha,
+        hora,
+        tipoOperacion
+      });
+    } catch (emailError) {
+      // ⚠️ No rompemos la creación de la cita si falla el correo
+      console.error('⚠️ Error enviando correo de cita:', emailError);
+    }
 
     res.json({ ok: true, cita });
 

@@ -24,16 +24,28 @@ function emitSocketTo(req, evento, payload, receptorEmail, emisorEmail) {
 exports.enviarMensaje = async (req, res) => {
   try {
     const user = req.user;
-    if (!user?.email && !user?.correo) return res.status(401).json({ msg: 'No autenticado' });
+    if (!user?.email && !user?.correo) {
+      return res.status(401).json({ msg: 'No autenticado' });
+    }
+
+    // 🚫 BLOQUEO TOTAL A AGENTES
+    if (user.rol === 'agente') {
+      return res.status(403).json({
+        msg: 'Los agentes NO pueden enviar mensajes por /chat. Usa /mensajes-agentes'
+      });
+    }
 
     const usuarioEmail = (user.email || user.correo || '').toLowerCase();
     const emisorEmail = String(req.body.emisorEmail || '').toLowerCase();
     const receptorEmail = String(req.body.receptorEmail || '').toLowerCase();
+
+    if (emisorEmail !== usuarioEmail) {
+      return res.status(403).json({ msg: 'No puedes enviar como otro usuario' });
+    }
+
     const mensaje = String(req.body.mensaje || '');
     const tipoDocumento = String(req.body.tipoDocumento || '');
     const nombreCliente = String(req.body.nombreCliente || '');
-
-    if (emisorEmail !== usuarioEmail) return res.status(403).json({ msg: 'No puedes enviar como otro usuario' });
 
     let archivoUrl = null;
     if (req.file) {
@@ -55,8 +67,11 @@ exports.enviarMensaje = async (req, res) => {
     });
 
     emitSocketTo(req, 'nuevoMensaje', doc, receptorEmail, emisorEmail);
+
     return res.json({ ok: true, mensaje: doc });
+
   } catch (err) {
+    console.error(err);
     return res.status(500).json({ msg: 'Error al enviar mensaje' });
   }
 };
@@ -108,42 +123,118 @@ exports.misThreads = async (req, res) => {
     if (!my) return res.status(401).json({ msg: 'No autenticado' });
 
     const ultimos = await Mensaje.aggregate([
-      { $addFields: {
+      {
+        $addFields: {
           emisorLower: { $toLower: { $ifNull: ['$emisorEmail', ''] } },
           receptorLower: { $toLower: { $ifNull: ['$receptorEmail', ''] } }
-      }},
-      { $match: {
+        }
+      },
+      {
+        $match: {
           $or: [
             { $expr: { $eq: ['$emisorLower', my] } },
             { $expr: { $eq: ['$receptorLower', my] } }
           ]
-      }},
-      { $addFields: {
-          a: { $cond: [{ $lte: ['$emisorLower', '$receptorLower'] }, '$emisorLower', '$receptorLower'] },
-          b: { $cond: [{ $lte: ['$emisorLower', '$receptorLower'] }, '$receptorLower', '$emisorLower'] },
-          otherLower: { $cond: [{ $eq: ['$emisorLower', my] }, '$receptorLower', '$emisorLower'] }
-      }},
-      { $addFields: { participantsHash: { $concat: ['$a', '#', '$b'] } } },
+        }
+      },
+      {
+        $addFields: {
+          a: {
+            $cond: [
+              { $lte: ['$emisorLower', '$receptorLower'] },
+              '$emisorLower',
+              '$receptorLower'
+            ]
+          },
+          b: {
+            $cond: [
+              { $lte: ['$emisorLower', '$receptorLower'] },
+              '$receptorLower',
+              '$emisorLower'
+            ]
+          },
+          otherLower: {
+            $cond: [
+              { $eq: ['$emisorLower', my] },
+              '$receptorLower',
+              '$emisorLower'
+            ]
+          }
+        }
+      },
+      {
+        $addFields: {
+          participantsHash: { $concat: ['$a', '#', '$b'] }
+        }
+      },
       { $sort: { fecha: -1, createdAt: -1, _id: -1 } },
-      { $group: { _id: '$participantsHash', lastMessage: { $first: '$$ROOT' } } },
-      { $project: {
+      {
+        $group: {
+          _id: '$participantsHash',
+          lastMessage: { $first: '$$ROOT' }
+        }
+      },
+      {
+        $project: {
           participantsHash: '$_id',
           _id: 0,
           lastMessage: 1,
           otherLower: '$lastMessage.otherLower'
-      }},
-      { $lookup: {
+        }
+      },
+
+      // 🔹 LOOKUP DEL OTRO USUARIO (SE AÑADE ROLE, NO SE QUITA NADA)
+      {
+        $lookup: {
           from: 'users',
           let: { otherEmail: '$otherLower' },
           pipeline: [
-            { $addFields: { correoLower: { $toLower: { $ifNull: ['$correo', ''] } } } },
-            { $match: { $expr: { $eq: ['$correoLower', '$$otherEmail'] } } },
-            { $project: { _id: 0, nombre: 1, correo: 1, fotoPerfil: 1, picture: 1, logo: 1 } }
+            {
+              $addFields: {
+                correoLower: { $toLower: { $ifNull: ['$correo', ''] } }
+              }
+            },
+            {
+              $match: {
+                $expr: { $eq: ['$correoLower', '$$otherEmail'] }
+              }
+            },
+            {
+              $project: {
+                _id: 0,
+                nombre: 1,
+                correo: 1,
+                fotoPerfil: 1,
+                picture: 1,
+                logo: 1,
+                role: 1 // 👈 SOLO SE AÑADE ESTO
+              }
+            }
           ],
           as: 'otherUser'
-      }},
-      { $addFields: { otherUser: { $first: '$otherUser' } } },
-      { $project: {
+        }
+      },
+
+      // 🔹 APLASTAMOS otherUser (igual que antes)
+      {
+        $addFields: {
+          otherUser: { $first: '$otherUser' }
+        }
+      },
+
+      // 🔥 FILTRO CLAVE: EXCLUIR AGENTES
+      {
+        $match: {
+          $or: [
+            { 'otherUser.role': { $exists: false } },
+            { 'otherUser.role': { $ne: 'agente' } }
+          ]
+        }
+      },
+
+      // 🔹 PROYECCIÓN FINAL (IGUAL QUE TENÍAS)
+      {
+        $project: {
           email: '$otherLower',
           username: { $ifNull: ['$otherUser.nombre', '$otherLower'] },
           fotoPerfil: {
@@ -160,15 +251,19 @@ exports.misThreads = async (req, res) => {
             archivoUrl: '$lastMessage.archivoUrl',
             tipoDocumento: '$lastMessage.tipoDocumento'
           }
-      }},
+        }
+      },
+
       { $limit: 100 }
     ], { allowDiskUse: true });
 
     return res.json(ultimos);
   } catch (e) {
+    console.error('Error al listar threads', e);
     return res.status(500).json({ msg: 'Error al listar threads' });
   }
 };
+
 
 
 exports.marcarLeido = async (req, res) => {

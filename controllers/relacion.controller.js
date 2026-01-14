@@ -24,16 +24,17 @@ exports.obtenerClientesDelAgente = async (req, res) => {
 
     const clientes = relaciones
       .filter(r => r.cliente) // 🔥 elimina agentes automáticamente
-      .map(r => ({
-        _id: r.cliente._id,
-        nombre: r.cliente.nombre,
-        email: r.cliente.correo,
-        telefono: r.cliente.telefono || "—",
-        tipoCliente: r.tipoCliente || r.cliente.tipoCliente || "—",
-        fechaRegistro: r.createdAt,
-        origen: "relacion",
-        status: "activo",
-      }));
+.map(r => ({
+  _id: r.cliente._id,
+  nombre: r.cliente.nombre,
+  email: r.cliente.correo,
+  telefono: r.cliente.telefono || "—",
+  tipoCliente: r.tipoCliente || r.cliente.tipoCliente || "—",
+  tipoOperacion: r.tipoOperacion || "—", // 👈 FALTABA
+  fechaRegistro: r.createdAt,
+  origen: "relacion",
+  status: "activo",
+}));
 
     res.json(clientes);
   } catch (error) {
@@ -114,7 +115,7 @@ function limitePorPlan(plan) {
 exports.agenteCreaCliente = async (req, res) => {
   try {
     const agenteId = req.user._id;
-    const { nombre, email, telefono, tipoCliente } = req.body;
+    const { nombre, email, telefono, tipoCliente, tipoOperacion } = req.body;
 
     // 1️⃣ Validar agente
     const agente = await User.findById(agenteId);
@@ -122,52 +123,44 @@ exports.agenteCreaCliente = async (req, res) => {
       return res.status(404).json({ msg: "Agente no encontrado" });
     }
 
-    // 2️⃣ Validar límite por plan
-    const limite = limitePorPlan(agente.tipoPlan);
-    const usados = await Relacion.countDocuments({ agente: agenteId });
+    // 3️⃣ Normalizar correo
+    const correoNorm = email.toLowerCase().trim();
 
-    if (usados >= limite) {
-      return res.status(403).json({
-        msg: `Tu plan (${agente.tipoPlan}) permite solo ${limite} clientes.`,
+    // 4️⃣ Buscar cliente
+    let cliente = await User.findOne({ correo: correoNorm });
+    const esNuevo = !cliente;
+
+    // 5️⃣ Generar contraseña temporal
+    const tempPass = Math.random().toString(36).slice(-8);
+
+    if (cliente) {
+      // 🔁 Cliente existente
+      cliente.password = tempPass; // plano → pre-save hashea
+      cliente.telefono = telefono;
+      cliente.tipoCliente = tipoCliente;
+      await cliente.save();
+    } else {
+      // 🆕 Cliente nuevo
+      cliente = await User.create({
+        nombre,
+        correo: correoNorm,
+        telefono,
+        tipoCliente,
+        password: tempPass,
+        rol: "cliente",
       });
     }
 
-    // 3️⃣ Buscar cliente
-    let cliente = await User.findOne({ correo: email.toLowerCase() });
-    let esNuevo = false;
-
-    // 4️⃣ Crear cliente si no existe
-if (!cliente) {
-  esNuevo = true;
-
-  const tempPass = Math.random().toString(36).slice(-8);
-  const hash = await bcrypt.hash(tempPass, 10);
-
-  cliente = await User.create({
-    nombre,
-    correo: email,
-    telefono,
-    password: hash,
-    rol: "cliente",
-    tipoCliente,
-    origen: "relacion",
-  });
-
-  // 📧 Enviar correo con SMTP Hostinger
-  try {
+    // 6️⃣ Enviar correo
     await enviarAltaCliente({
-      to: email,
-      nombreCliente: nombre,
+      to: cliente.correo,
+      nombreCliente: cliente.nombre,
       nombreAgente: agente.nombre,
-      correo: email,
-      password: tempPass
+      correo: cliente.correo,
+      password: tempPass,
     });
-  } catch (mailErr) {
-    console.error("❌ Error enviando correo de alta cliente:", mailErr);
-  }
-}
 
-    // 5️⃣ Verificar relación existente
+    // 7️⃣ Verificar relación existente
     const existeRelacion = await Relacion.findOne({
       agente: agenteId,
       cliente: cliente._id,
@@ -180,14 +173,15 @@ if (!cliente) {
       });
     }
 
-    // 6️⃣ Crear relación
+    // 8️⃣ Crear relación (AQUÍ VA tipoOperacion)
     const relacion = await Relacion.create({
       agente: agenteId,
       cliente: cliente._id,
       tipoCliente,
+      tipoOperacion, // 👈 AQUÍ
     });
 
-    // 7️⃣ Respuesta final
+    // 9️⃣ Respuesta final
     return res.json({
       msg: esNuevo ? "Cliente creado y asignado." : "Cliente asignado.",
       cliente,

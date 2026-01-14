@@ -1,5 +1,6 @@
 const Propiedad = require("../models/Propiedad");
 const User = require("../models/User"); 
+const MensajeAgente = require('../models/MensajesAgente');
 const Seguimiento = require("../models/Seguimiento");
 const Busqueda = require("../models/Busqueda");
 const fs = require("fs");
@@ -900,17 +901,15 @@ exports.incrementarVisita = async (req, res) => {
 exports.incrementarContacto = async (req, res) => {
   try {
     const { id } = req.params;
+    const user = req.user || {};
+    const rol = (user.rol || '').toLowerCase();
+
     const {
-      canal,
       citaNombre,
       citaEmail,
-      citaFecha,
-      citaHora,
       citaMensaje,
       tipoCliente,
     } = req.body || {};
-
-    const user = req.user || {};
 
     const clienteEmail = (
       user.email ||
@@ -919,7 +918,7 @@ exports.incrementarContacto = async (req, res) => {
     )?.toLowerCase().trim();
 
     if (!clienteEmail) {
-      return res.status(400).json({ msg: 'Email de cliente requerido' });
+      return res.status(400).json({ msg: 'Email requerido' });
     }
 
     const prop = await Propiedad.findById(id)
@@ -933,68 +932,57 @@ exports.incrementarContacto = async (req, res) => {
     const agenteEmail = (
       prop.agente?.email ||
       prop.agente?.correo
-    )?.toLowerCase().trim();
+    )?.toLowerCase();
 
     // 📊 contador
     await Propiedad.findByIdAndUpdate(id, {
       $inc: { contactosGenerados: 1 },
     });
 
-    // 💬 mensaje automático
-    const mensajeAuto = `
-    Hola, estoy interesado en la propiedad ${prop.clave}.
-    ¿Podrías brindarme más información?
-    `.trim();
 
-    await Mensaje.create({
-      emisorEmail: clienteEmail,
-      receptorEmail: agenteEmail,
+    // ===========================
+    // 🧑‍💼 AGENTE → MENSAJES-AGENTES
+    // ===========================
+    if (rol === 'agente') {
+    // ===========================
+    // 🧑‍💼 CONTACTO → MENSAJES-AGENTES
+    // ===========================
+        await MensajeAgente.create({
+          nombreAgente: prop.agente?.nombre,
+          emailAgente: agenteEmail,          // 👈 DUEÑO DE LA PROPIEDAD (Michelle)
+          nombreCliente: citaNombre || user.nombre,
+          emailCliente: clienteEmail,        // 👈 QUIEN CONTACTA (Susana)
+          texto: citaMensaje || 'Estoy interesado en esta propiedad',
+          idPropiedad: prop._id,
+          imagenPropiedad: prop.imagenPrincipal || '',
+          tipoOperacion: prop.tipoOperacion,
+          ubicacion: `${prop.direccion?.municipio}, ${prop.direccion?.estado}`,
+          remitenteId: user._id,
+        });
+      }
 
-      // 👉 usa el mensaje del cliente o el automático
-      mensaje: (citaMensaje && citaMensaje.trim()) || mensajeAuto,
-
-      propiedadId: prop._id,
-      propiedadClave: prop.clave,
-
-      // 🔥 SNAPSHOT PARA EL CHAT
-      propiedadSnapshot: {
-        id: prop._id,
-        clave: prop.clave,
-        imagen: prop.imagenPrincipal || prop.imagenes?.[0] || null,
-        precio: prop.precio,
-        tipoOperacion: prop.tipoOperacion,
-        ubicacion: `${prop.direccion?.municipio || ''}, ${prop.direccion?.estado || ''}`,
-      },
-
-      fecha: new Date(),
-      nombreCliente: citaNombre || user.nombre || 'Cliente',
-      participantsHash: hashParticipants(clienteEmail, agenteEmail),
-    });
-
-
-
-    // 🧠 SEGUIMIENTO (AQUÍ ES DONDE DEBE IR)
+    // ===========================
+    // 📌 Seguimiento
+    // ===========================
     const seguimiento = await crearSeguimientoSiNoExiste({
       clienteEmail,
-      clienteNombre: citaNombre || user.nombre,
+      clienteNombre: citaNombre,
       agenteEmail,
       tipoCliente,
       tipoOperacion: prop.tipoOperacion,
       propiedadId: prop._id,
-      origen: canal || 'EMAIL',
+      origen: rol === 'agente' ? 'mensajes-agentes' : 'mensajes',
     });
 
-    return res.json({
-      ok: true,
-      msg: 'Lead registrado correctamente',
-      seguimiento,
-    });
+    return res.json({ ok: true, seguimiento });
 
   } catch (err) {
-    console.error('❌ incrementarContacto error:', err);
-    res.status(500).json({ msg: 'Error interno al registrar contacto' });
+    console.error('❌ incrementarContacto', err);
+    res.status(500).json({ msg: 'Error interno' });
   }
 };
+
+
 
 
 // =============================================

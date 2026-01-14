@@ -9,6 +9,11 @@ const RelacionAgenteClienteSchema = new mongoose.Schema(
       enum: ["comprador", "arrendatario", "propietario", null],
       default: null,
     },
+    tipoOperacion: {
+      type: String,
+      enum: ["venta", "renta"],
+      required: true,
+    },
     notas: { type: String },
   },
   { timestamps: true }

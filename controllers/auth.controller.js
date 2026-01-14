@@ -313,23 +313,46 @@ exports.login = async (req, res) => {
     const { correo, password } = req.body;
 
     if (!correo || !password) {
-      return res
-        .status(400)
-        .json({ msg: "Correo y contraseña son obligatorios." });
+      return res.status(400).json({
+        msg: "Correo y contraseña son obligatorios."
+      });
     }
 
-    const usuario = await User.findOne({ correo });
+    // 🔥 NORMALIZAR
+    const correoNorm = String(correo).toLowerCase().trim();
+
+    // 🔥 BUSCAR POR AMBOS CAMPOS
+    const usuario = await User.findOne({
+      $or: [
+        { correo: correoNorm },
+        { email: correoNorm }
+      ]
+    });
+
     if (!usuario) {
-      return res.status(404).json({ msg: "Correo o contraseña incorrectos." });
+      return res.status(401).json({
+        msg: "Correo o contraseña incorrectos."
+      });
     }
 
-    const passwordValida = await bcrypt.compare(password, usuario.password);
+    const passwordValida = await bcrypt.compare(
+      String(password),
+      usuario.password
+    );
+
     if (!passwordValida) {
-      return res.status(401).json({ msg: "Correo o contraseña incorrectos." });
+      return res.status(401).json({
+        msg: "Correo o contraseña incorrectos."
+      });
     }
 
     const token = jwt.sign(
-      { id: usuario._id, rol: usuario.rol, nombre: usuario.nombre },
+      {
+        id: usuario._id,
+        rol: usuario.rol,
+        nombre: usuario.nombre,
+        correo: usuario.correo || usuario.email
+      },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -337,12 +360,14 @@ exports.login = async (req, res) => {
     const userData = usuario.toObject();
     delete userData.password;
 
-    res.status(200).json({ token, user: userData });
+    return res.status(200).json({ token, user: userData });
+
   } catch (err) {
-    console.error("Error en login:", err);
-    res.status(500).json({ msg: "Error interno del servidor." });
+    console.error("❌ Error en login:", err);
+    return res.status(500).json({ msg: "Error interno del servidor." });
   }
 };
+
 
 exports.actualizarFotoPerfil = async (req, res) => {
   const usuarioId = req.user.id;

@@ -70,7 +70,7 @@ exports.createOrGetSeguimiento = async (req, res) => {
     });
 
     // ⚙️ Determinar tipoCliente desde la relación
-    const tipoClienteFinal = relacion?.tipoCliente || "Sin definir";
+    const tipoClienteFinal = relacion?.tipoCliente || "directo";
 
     // 🆕 Crear el seguimiento con el tipoCliente correcto
     const nuevo = await Seguimiento.create({

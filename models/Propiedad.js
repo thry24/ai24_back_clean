@@ -260,6 +260,8 @@ const propiedadSchema = new mongoose.Schema({
   servicios: {
     tipoGas: Boolean,
     internet: Boolean,
+    gasNatural: Boolean,
+    gasLP: Boolean,
     telefonia: Boolean,
     tv: Boolean,
     enchufeCarros: Boolean,
@@ -284,7 +286,7 @@ const propiedadSchema = new mongoose.Schema({
     basket: Boolean,
     volley: Boolean,
     albercaPrivada: Boolean,
-    
+    areasVerdes: Boolean,
     otros: String,
   },
 

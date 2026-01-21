@@ -32,4 +32,17 @@ router.put("/:id/perfil", async (req, res) => {
 // 👇 lo que ya tenías
 router.get("/propiedades/:idInmobiliaria", require("../controllers/inmobiliaria.controller").getPropiedadesPorInmobiliaria);
 
+// ✅ LISTAR TODAS (DIRECTORIO)
+router.get("/", async (req, res) => {
+  try {
+    const inmobiliarias = await Inmobiliaria.find()
+      .select("nombre logo descripcion colorPrimario heroTitulo")
+      .sort({ _id: -1 });
+
+    res.json(inmobiliarias);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

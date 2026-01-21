@@ -82,4 +82,19 @@ router.put('/:id/perfil', async (req, res) => {
 });
 
 
+/**
+ * 🔹 Listar todas las inmobiliarias (directorio)
+ */
+router.get('/', async (req, res) => {
+  try {
+    const inmobiliarias = await Inmobiliaria.find()
+      .select('nombre logo descripcion colorPrimario heroTitulo') // lo que quieras mostrar
+      .sort({ _id: -1 });
+
+    res.json(inmobiliarias);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;

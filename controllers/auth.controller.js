@@ -88,7 +88,7 @@ exports.initRegister = async (req, res) => {
   const { nombre, correo, password, rol, telefono, inmobiliaria, firmaBase64 } =
     req.body;
   const passwordRegex =
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*_)[A-Za-z\d_]{8,}$/;
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$/;
 
   let imagenSubida = null;
   let firmaSubida = null;
@@ -108,11 +108,11 @@ exports.initRegister = async (req, res) => {
       return res.status(400).json({ msg: "Rol inválido." });
     }
 
-    if (!passwordRegex.test(password)) {
-      return res.status(400).json({
-        msg: "La contraseña debe tener al menos 8 caracteres, incluyendo mayúscula, minúscula, número y guion bajo (_).",
-      });
-    }
+if (!passwordRegex.test(password)) {
+  return res.status(400).json({
+    msg: "La contraseña debe tener al menos 8 caracteres, incluyendo mayúscula, minúscula y número.",
+  });
+}
 
     const correoExistente = await User.findOne({ correo });
     if (correoExistente) {

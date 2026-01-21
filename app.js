@@ -31,10 +31,12 @@ const seguimientoRoutes = require("./routes/seguimiento.routes");
 const ColaboracionesRoutes = require("./routes/colaboraciones");
 const citasRoutes = require("./routes/citas.routes");
 const recorridosRoutes = require("./routes/recorridos");
+const cartaOfertaRoutes = require("./routes/cartaOferta.routes");
 const http = require("http");
 const { Server } = require("socket.io");
 const kpisRoutes = require("./routes/kpis.routes");
 const comisionesRoutes = require("./routes/comisiones.routes");
+const documentosSeguimientoRoutes = require('./routes/documentos.routes');
 
 const app = express();
 app.use(
@@ -63,13 +65,17 @@ app.use("/api/recorridos", recorridosRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 app.use("/api", crmDashboardRoutes);
 app.use("/api/chat", chatRoutes);
+app.use('/api/notificaciones', require('./routes/notificaciones.routes'));
 app.use('/api/suscripciones', suscripcionesRoutes);
 app.use('/api/requerimientos', requerimientosRoutes);
 app.use('/api/mensajes-agentes', mensajesAgentesRoutes);
 app.use('/api/wave-video', WaveVideoRoutes);
+app.use('/api/documentos', documentosSeguimientoRoutes);
+app.use('/api/cartas-oferta', cartaOfertaRoutes);
 app.use('/api/video', VideoGeneratorRoutes);
 app.use("/api/seguimientos", seguimientoRoutes);
 app.use('/api/colaboraciones', ColaboracionesRoutes);
+app.use('/api/seleccion', require('./routes/seleccion.routes'));
 app.use("/api/relaciones", require("./routes/relacion.routes"));
 app.use('/api', require('./routes/directorioRoutes'));
 app.use("/api/citas", citasRoutes);
@@ -80,6 +86,7 @@ app.use("/api/productividad", require("./routes/productividad.routes"));
 app.use("/api/inmobiliaria", require("./routes/inmobiliaria.routes"));
 app.use("/api/busquedas", require("./routes/busquedas.routes"));
 app.use("/api/upload", require("./routes/upload.routes"));
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 
 
 

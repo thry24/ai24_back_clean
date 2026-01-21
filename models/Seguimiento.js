@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { Schema } = mongoose;
 
 const seguimientoSchema = new mongoose.Schema(
   {
@@ -34,21 +35,27 @@ const seguimientoSchema = new mongoose.Schema(
     documentosCompletos: { type: Boolean, default: false },
     fechaBorradorArr: Date,
     fechaFirmaArr: Date,
-
+    fechaRetroalimentacion: Date,
+    resultadoRecorrido: {
+      type: String,
+      enum: ['INTERESADO', 'NO_INTERESADO', 'REQUIERE_OTRO_RECORRIDO']
+    },
     estatus: { type: String, default: 'En proceso' },
     estatusOtraMotivo: { type: String, default: '' },
 
     // 🔹 Origen del lead — también acepta email/whatsapp sin importar el caso
     origen: {
       type: String,
-      enum: ['MENSAJES', 'COLABORACIONES', 'MANUAL', 'EMAIL', 'WHATSAPP', 'MENSAJES-AGENTES'],
+      enum: ['MENSAJES', 'COLABORACIONES', 'MANUAL', 'EMAIL', 'WHATSAPP', 'MENSAJES-AGENTES', 'DIRECTO'],
       default: 'MANUAL',
       set: (v) => (v ? v.toUpperCase() : 'MANUAL'),
     },
-
+    propiedadConfirmada: {
+      type: Schema.Types.ObjectId,
+      ref: 'Propiedad'
+    },
     // 🔗 Propiedad relacionada
     propiedadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Propiedad' },
-
     estadoFinal: {
       type: String,
       enum: ['GANADO', 'PERDIDO', 'EN PROCESO'],

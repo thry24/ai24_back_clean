@@ -3,6 +3,9 @@ const router = express.Router();
 const ctrl = require("../controllers/seguimiento.controller");
 const { verifyToken, permitirRoles } = require("../middlewares/authMiddleware");
 
+
+router.get('/:id', verifyToken, ctrl.obtenerSeguimientoPorId);
+
 /**
  * ================================
  *  CREAR / OBTENER (NO USAR EN CONTACTO)
@@ -92,5 +95,36 @@ router.get(
   verifyToken,
   ctrl.getByInmobiliaria
 );
+// 🔹 OBTENER SEGUIMIENTO ACTIVO POR CLIENTE
+router.get(
+  '/cliente/:clienteEmail',
+  verifyToken,
+  ctrl.getSeguimientoActivoCliente
+);
+
+router.post(
+  '/:seguimientoId/retroalimentacion',
+  verifyToken,
+  ctrl.registrarRetroalimentacion
+);
+router.post(
+  '/:seguimientoId/agendar-cita',
+  verifyToken,
+  ctrl.agendarCita
+);
+
+router.post(
+  '/:seguimientoId/segundo-recorrido',
+  verifyToken,
+  ctrl.registrarSegundoRecorrido
+);
+
+router.post(
+  '/:seguimientoId/segunda-retroalimentacion',
+  verifyToken,
+  ctrl.registrarSegundaRetroalimentacion
+);
+// routes/seguimiento.routes.js
+router.patch('/:seguimientoId/cerrar', verifyToken, ctrl.cerrarSeguimiento);
 
 module.exports = router;

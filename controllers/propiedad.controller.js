@@ -3,6 +3,11 @@ const User = require("../models/User");
 const MensajeAgente = require('../models/MensajesAgente');
 const Seguimiento = require("../models/Seguimiento");
 const Busqueda = require("../models/Busqueda");
+const Notificacion = require('../models/Notificacion');
+const Colaboracion = require('../models/Colaboracion');
+const { crearNotificacion } = require('../utils/notificaciones');
+const { enviarCorreoContactoAgente } = require('../utils/mailer');
+const Lead = require('../models/Lead');
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
@@ -900,90 +905,205 @@ exports.incrementarVisita = async (req, res) => {
 
 exports.incrementarContacto = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id: propiedadId } = req.params;
+
+    // ===========================
+    // 🔐 Usuario desde token
+    // ===========================
     const user = req.user || {};
-    const rol = (user.rol || '').toLowerCase();
+    const rol = (user.rol || 'cliente').toLowerCase(); // cliente | agente
 
     const {
       citaNombre,
       citaEmail,
+      citaTelefono,
       citaMensaje,
-      tipoCliente,
     } = req.body || {};
 
-    const clienteEmail = (
+    const emailContacto = (
       user.email ||
       user.correo ||
       citaEmail
     )?.toLowerCase().trim();
 
-    if (!clienteEmail) {
+    if (!emailContacto) {
       return res.status(400).json({ msg: 'Email requerido' });
     }
 
-    const prop = await Propiedad.findById(id)
-      .populate('agente', 'email correo nombre')
+    // ===========================
+    // 🏠 Propiedad
+    // ===========================
+    const propiedad = await Propiedad.findById(propiedadId)
+      .populate('agente', 'nombre correo email')
       .lean();
 
-    if (!prop) {
+    if (!propiedad) {
       return res.status(404).json({ msg: 'Propiedad no encontrada' });
     }
 
     const agenteEmail = (
-      prop.agente?.email ||
-      prop.agente?.correo
+      propiedad.agente?.email ||
+      propiedad.agente?.correo
     )?.toLowerCase();
 
-    // 📊 contador
-    await Propiedad.findByIdAndUpdate(id, {
+    // ===========================
+    // 📊 Contador general
+    // ===========================
+    await Propiedad.findByIdAndUpdate(propiedadId, {
       $inc: { contactosGenerados: 1 },
     });
 
+    // ===========================
+    // 👤 Usuario real si existe
+    // ===========================
+    const clienteUser = await User.findOne({
+      $or: [{ email: emailContacto }, { correo: emailContacto }],
+    }).lean();
 
-    // ===========================
-    // 🧑‍💼 AGENTE → MENSAJES-AGENTES
-    // ===========================
+    const nombreFinal =
+      citaNombre ||
+      clienteUser?.nombre ||
+      'Contacto';
+
+    const telefonoFinal =
+      clienteUser?.telefono ||
+      citaTelefono ||
+      null;
+
+    const tipoClienteFinal =
+      clienteUser?.tipoCliente ||
+      clienteUser?.rol ||
+      rol;
+
+    // =========================================================
+    // 🧑‍💼 CASO 1: CONTACTA UN AGENTE → MensajeAgente
+    // =========================================================
     if (rol === 'agente') {
-    // ===========================
-    // 🧑‍💼 CONTACTO → MENSAJES-AGENTES
-    // ===========================
-        await MensajeAgente.create({
-          nombreAgente: prop.agente?.nombre,
-          emailAgente: agenteEmail,          // 👈 DUEÑO DE LA PROPIEDAD (Michelle)
-          nombreCliente: citaNombre || user.nombre,
-          emailCliente: clienteEmail,        // 👈 QUIEN CONTACTA (Susana)
-          texto: citaMensaje || 'Estoy interesado en esta propiedad',
-          idPropiedad: prop._id,
-          imagenPropiedad: prop.imagenPrincipal || '',
-          tipoOperacion: prop.tipoOperacion,
-          ubicacion: `${prop.direccion?.municipio}, ${prop.direccion?.estado}`,
-          remitenteId: user._id,
-        });
-      }
+      await MensajeAgente.create({
+        nombreAgente: propiedad.agente?.nombre,
+        emailAgente: agenteEmail,
+        nombreCliente: nombreFinal,
+        emailCliente: emailContacto,
+        telefonoCliente: telefonoFinal,
+        texto: citaMensaje || 'Un agente está interesado en colaborar',
+        idPropiedad: propiedad._id,
+        imagenPropiedad: propiedad.imagenPrincipal,
+        tipoOperacion: propiedad.tipoOperacion,
+        ubicacion: `${propiedad.direccion?.municipio}, ${propiedad.direccion?.estado}`,
+        remitenteId: user._id,
+      });
 
-    // ===========================
-    // 📌 Seguimiento
-    // ===========================
-    const seguimiento = await crearSeguimientoSiNoExiste({
-      clienteEmail,
-      clienteNombre: citaNombre,
+      await Colaboracion.findOneAndUpdate(
+        {
+          propiedad: propiedad._id,
+          agenteEmail,
+          colaboradorEmail: emailContacto,
+        },
+        {
+          agentePrincipal: propiedad.agente?._id,
+          colaborador: user._id,
+          tipoColaboracion: 'externo',
+          nombreColaborador: user.nombre,
+          colaboradorEmail: emailContacto,
+          agenteEmail,
+          nombreAgente: propiedad.agente?.nombre,
+          propiedad: propiedad._id,
+          nombrePropiedad: propiedad.clave,
+          imagenPropiedad: propiedad.imagenPrincipal,
+          tipoOperacion: propiedad.tipoOperacion.toUpperCase(),
+          estado: 'pendiente',
+        },
+        { upsert: true, new: true }
+      );
+
+      await Notificacion.create({
+        usuarioEmail: agenteEmail,
+        mensaje: `Un agente quiere colaborar contigo por la propiedad ${propiedad.clave}`,
+        tipo: 'contacto',
+        referenciaId: propiedad._id,
+      });
+
+      return res.json({ ok: true, tipo: 'AGENTE' });
+    }
+
+    // =========================================================
+    // 👤 CASO 2: CONTACTA UN CLIENTE → Mensaje
+    // =========================================================
+
+    // 🔥 Lead (NO duplicar)
+    let lead = await Lead.findOne({
+      clienteEmail: emailContacto,
       agenteEmail,
-      tipoCliente,
-      tipoOperacion: prop.tipoOperacion,
-      propiedadId: prop._id,
-      origen: rol === 'agente' ? 'mensajes-agentes' : 'mensajes',
+      propiedadId: propiedad._id,
     });
 
-    return res.json({ ok: true, seguimiento });
+    if (!lead) {
+      lead = await Lead.create({
+        propiedadId: propiedad._id,
+        agenteEmail,
+        nombre: nombreFinal,
+        email: emailContacto,
+        telefono: telefonoFinal,
+        rol: clienteUser?.rol || 'cliente',
+        tipoCliente: tipoClienteFinal,
+        mensaje: citaMensaje || 'Interesado en la propiedad',
+        tipoOperacion: propiedad.tipoOperacion,
+        ubicacion: `${propiedad.direccion?.municipio}, ${propiedad.direccion?.estado}`,
+        origen: 'propiedad',
+        estatus: 'nuevo',
+      });
+    }
+
+    // 💬 MENSAJE CLIENTE → AGENTE (CHAT REAL)
+    await Mensaje.create({
+      emisorEmail: emailContacto,     // cliente
+      receptorEmail: agenteEmail,     // agente
+
+      mensaje: citaMensaje || 'Estoy interesado en esta propiedad',
+      nombreCliente: nombreFinal,
+
+      propiedadId: propiedad._id,
+      propiedadClave: propiedad.clave,
+
+      propiedadSnapshot: {
+        id: propiedad._id,
+        clave: propiedad.clave,
+        imagen: propiedad.imagenPrincipal,
+        precio: propiedad.precio,
+        tipoOperacion: propiedad.tipoOperacion,
+        ubicacion: `${propiedad.direccion?.municipio}, ${propiedad.direccion?.estado}`,
+      },
+    });
+
+    await Notificacion.create({
+      usuarioEmail: agenteEmail,
+      mensaje: `Un cliente te ha contactado por la propiedad ${propiedad.clave}`,
+      tipo: 'contacto',
+      referenciaId: propiedad._id,
+    });
+
+    const seguimiento = await crearSeguimientoSiNoExiste({
+      clienteEmail: emailContacto,
+      clienteNombre: nombreFinal,
+      agenteEmail,
+      tipoCliente: tipoClienteFinal,
+      tipoOperacion: propiedad.tipoOperacion,
+      propiedadId: propiedad._id,
+      origen: 'Directo',
+    });
+
+    return res.json({
+      ok: true,
+      tipo: 'CLIENTE',
+      lead,
+      seguimiento,
+    });
 
   } catch (err) {
     console.error('❌ incrementarContacto', err);
     res.status(500).json({ msg: 'Error interno' });
   }
 };
-
-
-
 
 // =============================================
 // 🔥 OBTENER PROPIEDADES POR INMOBILIARIA (POR AGENTES)

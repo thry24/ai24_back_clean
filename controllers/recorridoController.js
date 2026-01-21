@@ -1,4 +1,5 @@
 const Recorrido = require('../models/Recorrido');
+const Seguimiento = require('../models/Seguimiento');
 
 /* =========================
    📌 CREAR NUEVO RECORRIDO
@@ -8,7 +9,20 @@ exports.crear = async (req, res) => {
     const nuevo = new Recorrido(req.body);
     await nuevo.save();
 
+    const { seguimientoId, fecha } = req.body;
+
+    if (seguimientoId && fecha) {
+      await Seguimiento.findByIdAndUpdate(
+        seguimientoId,
+        {
+          fechaRecorrido: fecha,
+          estatus: 'Recorrido agendado'
+        }
+      );
+    }
+
     res.json({ ok: true, recorrido: nuevo });
+
   } catch (err) {
     console.error('❌ Error al crear recorrido:', err);
     res.status(500).json({
@@ -17,6 +31,7 @@ exports.crear = async (req, res) => {
     });
   }
 };
+
 
 /* =========================
    📌 OBTENER RECORRIDOS POR AGENTE

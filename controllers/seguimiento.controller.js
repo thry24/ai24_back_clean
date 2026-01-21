@@ -2,6 +2,10 @@ const Seguimiento = require("../models/Seguimiento");
 const Relacion = require('../models/RelacionAgenteCliente'); // 👈 asegúrate de importar tu modelo de relación
 const Propiedad = require("../models/Propiedad"); 
 const User = require("../models/User"); // 👈 tu modelo real
+const CartaOferta = require('../models/temps'); // 👈 AQUÍ
+const Colaboracion = require('../models/Colaboracion');
+const SeleccionPropiedad = require('../models/SeleccionPropiedad');
+
 const { resolverTipoOperacion, calcularEstatus, aplicarCierreAutomatico } = require('./seguimiento.logic');
 exports.crearOObtenerSeguimiento = async (req, res) => {
   try {
@@ -89,6 +93,120 @@ exports.createOrGetSeguimiento = async (req, res) => {
   }
 };
 
+exports.registrarRetroalimentacion = async (req, res) => {
+  try {
+    const { seguimientoId } = req.params;
+    const {
+      comentario,
+      recorridoNoSeDio,
+      continuar
+    } = req.body;
+
+    const seguimiento = await Seguimiento.findById(seguimientoId);
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    // 📌 Guardar retroalimentación
+    seguimiento.fechaRetroalimentacion = new Date();
+    seguimiento.comentarioRetroalimentacion = comentario || '';
+
+    // ❌ Si NO se dio el recorrido
+    if (recorridoNoSeDio) {
+      seguimiento.recorridoNoSeDio = true;
+      seguimiento.estatus = 'Recorrido no realizado';
+    }
+
+    // ❌ Si el cliente NO desea continuar
+    if (continuar === false) {
+      seguimiento.estadoFinal = 'PERDIDO';
+      seguimiento.fechaFinalizacion = new Date();
+      seguimiento.estatus = 'Seguimiento cerrado';
+    }
+
+    await seguimiento.save();
+
+    // 🔔 Notificación al agente
+    await Notificacion.create({
+      usuarioEmail: seguimiento.agenteEmail,
+      mensaje: `Se registró retroalimentación del recorrido del cliente ${seguimiento.clienteNombre}`,
+      tipo: 'contacto',
+      referenciaId: seguimiento._id,
+    });
+
+    res.json({ ok: true, seguimiento });
+  } catch (err) {
+    console.error('❌ registrarRetroalimentacion', err);
+    res.status(500).json({ msg: 'Error al registrar retroalimentación' });
+  }
+};
+exports.registrarSegundoRecorrido = async (req, res) => {
+  try {
+    const { seguimientoId } = req.params;
+    const { fecha } = req.body;
+
+    const seguimiento = await Seguimiento.findById(seguimientoId);
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    if (!seguimiento.recorridoNoSeDio) {
+      return res.status(400).json({
+        msg: 'No se puede agendar segundo recorrido si el primero sí se realizó',
+      });
+    }
+
+    seguimiento.fechaSegundoRecorrido = new Date(fecha);
+    seguimiento.estatus = 'Segundo recorrido programado';
+    await seguimiento.save();
+
+    await Notificacion.create({
+      usuarioEmail: seguimiento.agenteEmail,
+      mensaje: `Se programó segundo recorrido para el cliente ${seguimiento.clienteNombre}`,
+      tipo: 'contacto',
+      referenciaId: seguimiento._id,
+    });
+
+    res.json({ ok: true, seguimiento });
+  } catch (err) {
+    console.error('❌ registrarSegundoRecorrido', err);
+    res.status(500).json({ msg: 'Error al programar segundo recorrido' });
+  }
+};
+exports.registrarSegundaRetroalimentacion = async (req, res) => {
+  try {
+    const { seguimientoId } = req.params;
+    const { comentario, continuar } = req.body;
+
+    const seguimiento = await Seguimiento.findById(seguimientoId);
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    seguimiento.fechaSegundaRetroalimentacion = new Date();
+    seguimiento.comentarioSegundaRetroalimentacion = comentario || '';
+
+    if (continuar === false) {
+      seguimiento.estadoFinal = 'PERDIDO';
+      seguimiento.fechaFinalizacion = new Date();
+      seguimiento.estatus = 'Seguimiento cerrado';
+    }
+
+    await seguimiento.save();
+
+    await Notificacion.create({
+      usuarioEmail: seguimiento.agenteEmail,
+      mensaje: `Segunda retroalimentación registrada para ${seguimiento.clienteNombre}`,
+      tipo: 'contacto',
+      referenciaId: seguimiento._id,
+    });
+
+    res.json({ ok: true, seguimiento });
+  } catch (err) {
+    console.error('❌ registrarSegundaRetroalimentacion', err);
+    res.status(500).json({ msg: 'Error al registrar segunda retroalimentación' });
+  }
+};
 
 // ✅ Obtener todos los seguimientos de un agente
 // ✅ Obtener todos los seguimientos de un agente
@@ -520,5 +638,217 @@ exports.aplicarAccion = async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ msg: 'Error aplicando acción' });
+  }
+};
+exports.cerrarSeguimiento = async (req, res) => {
+  try {
+    const { seguimientoId } = req.params;
+    const { resultado, motivoPerdida } = req.body; 
+    // resultado: 'GANADO' | 'PERDIDO'
+
+    if (!['GANADO', 'PERDIDO'].includes(resultado)) {
+      return res.status(400).json({ msg: 'Resultado inválido' });
+    }
+
+    const seguimiento = await Seguimiento.findById(seguimientoId);
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    // 🔒 Evitar doble cierre
+    if (seguimiento.estadoFinal !== 'EN PROCESO') {
+      return res.status(400).json({ msg: 'El seguimiento ya fue cerrado' });
+    }
+
+    // 🧭 Actualizar seguimiento
+    seguimiento.estadoFinal = resultado;
+    seguimiento.fechaCierre = new Date();
+    seguimiento.estatus = 'Operación finalizada';
+
+    if (resultado === 'PERDIDO' && motivoPerdida) {
+      seguimiento.estatusOtraMotivo = motivoPerdida;
+    }
+
+    await seguimiento.save();
+
+    // 🏠 Actualizar métricas de propiedad
+    if (seguimiento.propiedadId) {
+      await Propiedad.findByIdAndUpdate(seguimiento.propiedadId, {
+        $inc: resultado === 'GANADO'
+          ? { leadsGanados: 1 }
+          : { leadsPerdidos: 1 }
+      });
+    }
+
+    // 🔔 Notificaciones
+    const mensaje =
+      resultado === 'GANADO'
+        ? 'La operación se ha cerrado exitosamente 🎉'
+        : 'La operación fue marcada como perdida';
+
+    await Notificacion.create({
+      usuarioEmail: seguimiento.agenteEmail,
+      mensaje,
+      tipo: 'sistema',
+      referenciaId: seguimiento._id,
+    });
+
+    if (seguimiento.clienteEmail) {
+      await Notificacion.create({
+        usuarioEmail: seguimiento.clienteEmail,
+        mensaje,
+        tipo: 'contacto',
+        referenciaId: seguimiento._id,
+      });
+    }
+
+    res.json({ ok: true, seguimiento });
+  } catch (err) {
+    console.error('❌ cerrarSeguimiento', err);
+    res.status(500).json({ msg: 'Error al cerrar seguimiento' });
+  }
+};
+
+
+exports.obtenerSeguimientoPorId = async (req, res) => {
+  try {
+    const seguimiento = await Seguimiento.findById(req.params.id).lean();
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+    const cartaOferta = await CartaOferta.findOne({
+      seguimientoId: seguimiento._id
+    }).lean();
+
+
+    // ================================
+    // 🔑 1️⃣ PROPIEDAD CONFIRMADA REAL
+    // ================================
+    const seleccionConfirmada = await SeleccionPropiedad.findOne({
+      seguimiento: seguimiento._id,
+      estado: 'SELECCIONADA'
+    }).lean();
+
+    let propiedadConfirmada = null;
+    let esPropiedadMia = false;
+    let colaboracionEstado = null;
+
+    if (seleccionConfirmada) {
+      propiedadConfirmada = await Propiedad.findById(
+        seleccionConfirmada.propiedad
+      )
+        .populate('agente', 'correo email')
+        .lean();
+
+      if (propiedadConfirmada?.agente) {
+        const correoAgentePropiedad =
+          propiedadConfirmada.agente.correo ||
+          propiedadConfirmada.agente.email;
+
+        esPropiedadMia =
+          correoAgentePropiedad === seguimiento.agenteEmail;
+
+        // ================================
+        // 🤝 2️⃣ COLABORACIÓN (SI NO ES MÍA)
+        // ================================
+        if (!esPropiedadMia) {
+          const colaboracion = await Colaboracion.findOne({
+            propiedad: propiedadConfirmada._id,
+            agenteEmail: correoAgentePropiedad
+          }).lean();
+
+          colaboracionEstado = colaboracion?.estado || 'pendiente';
+        }
+      }
+    }
+
+    // ================================
+    // 📤 RESPUESTA FINAL AL FRONT
+    // ================================
+    return res.json({
+      ...seguimiento,
+
+      // 🔥 CLAVES REALES
+      propiedadConfirmadaId: propiedadConfirmada?._id || null,
+      propiedadConfirmada,
+
+      // 🔐 FLAGS DE CONTROL
+      esPropiedadMia,
+      colaboracionEstado,
+      cartaOferta
+    });
+
+  } catch (err) {
+    console.error('❌ obtenerSeguimientoPorId', err);
+    res.status(500).json({ msg: 'Error al obtener seguimiento' });
+  }
+};
+
+
+
+exports.getSeguimientoActivoCliente = async (req, res) => {
+  try {
+    const { clienteEmail } = req.params;
+
+    if (!clienteEmail) {
+      return res.status(400).json({ msg: 'clienteEmail requerido' });
+    }
+
+    const seguimiento = await Seguimiento.findOne({
+      clienteEmail: clienteEmail.toLowerCase(),
+      estatus: { $ne: 'cerrado' }
+    }).sort({ createdAt: -1 });
+
+    if (!seguimiento) {
+      return res.status(404).json(null);
+    }
+
+    res.json(seguimiento);
+  } catch (err) {
+    console.error('❌ getSeguimientoActivoCliente', err);
+    res.status(500).json({ msg: 'Error al obtener seguimiento activo' });
+  }
+};
+exports.agendarCita = async (req, res) => {
+  try {
+    const { seguimientoId } = req.params;
+
+    const seguimiento = await Seguimiento.findById(seguimientoId)
+      .populate('propiedadConfirmada');
+
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    if (!seguimiento.propiedadConfirmada) {
+      return res.status(400).json({ msg: 'No hay propiedad confirmada' });
+    }
+
+    if (seguimiento.fechaCita) {
+      return res.status(400).json({ msg: 'La cita ya fue creada' });
+    }
+
+    // 👉 crear cita
+    const cita = await Cita.create({
+      seguimiento: seguimiento._id,
+      clienteNombre: seguimiento.clienteNombre,
+      clienteEmail: seguimiento.clienteEmail,
+      agenteEmail: seguimiento.agenteEmail,
+      propiedad: seguimiento.propiedadConfirmada._id,
+      propiedadClave: seguimiento.propiedadConfirmada.clave,
+      propiedadImagen: seguimiento.propiedadConfirmada.imagenPrincipal,
+      tipoOperacion: seguimiento.tipoOperacion,
+      tipoEvento: 'CITA',
+      fecha: new Date(), // luego la podrás editar
+    });
+
+    seguimiento.fechaCita = cita.fecha;
+    await seguimiento.save();
+
+    res.json(seguimiento);
+
+  } catch (err) {
+    console.error('❌ agendarCita', err);
+    res.status(500).json({ msg: 'Error al agendar cita' });
   }
 };

@@ -1,5 +1,6 @@
-// src/utils/mailer.js
 const { Resend } = require('resend');
+const fs = require('fs');
+const path = require('path');
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -10,22 +11,19 @@ async function enviarCredenciales(to, nombreInmo, correo, password) {
     <p>La inmobiliaria <b>${nombreInmo}</b> te ha dado de alta.</p>
     <p><b>Correo:</b> ${correo}</p>
     <p><b>Contraseña temporal:</b> ${password}</p>
-    <br/>
-    <p>
-      Puedes entrar a 
-      <a href="https://thry24.com">https://thry24.com</a>
-      y cambiar tu contraseña.
-    </p>
-    <p>¡Esperamos que disfrutes tu experiencia!</p>
   `;
 
   return resend.emails.send({
-    from: 'Thry24 <verificaciones@thry24.com>', // DEBE ser del dominio verificado
+    from: 'Thry24 <verificaciones@thry24.com>',
     to: [to],
     subject: 'Bienvenido a Thry24 - Credenciales de acceso',
     html
   });
 }
+
+// ===============================
+// 🤝 Solicitud de colaboración
+// ===============================
 async function enviarSolicitudColaboracion({
   to,
   agenteNombre,
@@ -34,27 +32,200 @@ async function enviarSolicitudColaboracion({
 }) {
   const html = `
     <h2>🤝 Nueva solicitud de colaboración</h2>
-
-    <p>
-      El agente <b>${agenteNombre}</b> quiere colaborar contigo
-      en la propiedad:
-    </p>
-
+    <p>El agente <b>${agenteNombre}</b> quiere colaborar contigo en:</p>
     <p><b>${propiedadClave}</b></p>
-
     ${imagenPropiedad ? `<img src="${imagenPropiedad}" width="300"/>` : ''}
-
-    <p>
-      Ingresa a <a href="https://thry24.com">Thry24</a> para aceptar o rechazar la colaboración.
-    </p>
   `;
 
   return resend.emails.send({
     from: 'Thry24 <notificaciones@thry24.com>',
     to: [to],
-    subject: 'Nueva solicitud de colaboración en Thry24',
+    subject: 'Nueva solicitud de colaboración',
     html,
   });
 }
 
-module.exports = { enviarCredenciales, enviarSolicitudColaboracion };
+// ===============================
+// 📩 Contacto por propiedad
+// ===============================
+async function enviarCorreoContactoAgente({
+  to,
+  agenteNombre,
+  clienteNombre,
+  tipoCliente,
+  propiedadClave,
+  imagenPropiedad,
+  mensaje,
+}) {
+  const { error } = await resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to,
+    subject: `📩 Nuevo interés – ${propiedadClave}`,
+    html: `
+      <h2>Nuevo interés en tu propiedad</h2>
+      <p><b>${clienteNombre}</b> (${tipoCliente}) ha seleccionado:</p>
+      <h3>${propiedadClave}</h3>
+      ${imagenPropiedad ? `<img src="${imagenPropiedad}" width="300"/>` : ''}
+      <p>${mensaje}</p>
+    `,
+  });
+
+  if (error) {
+    console.error('❌ Error enviando correo:', error);
+    throw error;
+  }
+}
+
+// ===============================
+// 📄 Checklist documentos
+// ===============================
+async function enviarChecklistPropietario({
+  to,
+  nombrePropietario,
+  tipoOperacion,
+  documentos,
+  linkChecklist
+}) {
+  if (!linkChecklist) {
+    throw new Error('linkChecklist es obligatorio para enviar checklist');
+  }
+
+  const lista = documentos.map(d => `<li>${d}</li>`).join('');
+
+  const html = `
+    <h2>📄 Documentación requerida</h2>
+
+    <p>Hola <b>${nombrePropietario}</b>,</p>
+
+    <p>
+      Para continuar con la <b>${tipoOperacion}</b>, sube los siguientes documentos:
+    </p>
+
+    <ul>
+      ${lista}
+    </ul>
+
+    <p>
+      <a
+        href="${linkChecklist}"
+        style="
+          display:inline-block;
+          padding:12px 20px;
+          background:#2563eb;
+          color:#ffffff;
+          border-radius:6px;
+          text-decoration:none;
+          font-weight:bold;
+        "
+      >
+        👉 Subir documentos
+      </a>
+    </p>
+
+    <br />
+    <p>— Equipo Thry24</p>
+  `;
+
+  return resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to: [to],
+    subject: '📄 Documentación requerida',
+    html
+  });
+}
+
+/**
+ * 📩 Correo: Carta oferta generada (pendiente de respuesta)
+ */
+async function enviarCartaOfertaPropietario({
+  to,
+  nombrePropietario,
+  propiedadClave,
+  tipoOperacion,
+  linkCarta
+}) {
+  const html = `
+    <h2>📄 Nueva Carta Oferta</h2>
+
+    <p>Hola <b>${nombrePropietario}</b>,</p>
+
+    <p>
+      Tu asesor ha generado una <b>Carta Oferta</b> para tu propiedad
+      <b>${propiedadClave}</b> en modalidad de <b>${tipoOperacion}</b>.
+    </p>
+
+    <p>
+      Por favor revisa la propuesta y decide si deseas aceptarla o rechazarla.
+    </p>
+
+    <p>
+      <a
+        href="${linkCarta}"
+        style="
+          display:inline-block;
+          padding:12px 20px;
+          background:#2563eb;
+          color:#fff;
+          text-decoration:none;
+          border-radius:6px;
+        "
+      >
+        👉 Ver Carta Oferta
+      </a>
+    </p>
+
+    <p>
+      Tu decisión permitirá continuar o no con el proceso.
+    </p>
+
+    <br />
+    <p>— Equipo Thry24</p>
+  `;
+
+  return resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to: [to],
+    subject: '📄 Tienes una nueva Carta Oferta',
+    html
+  });
+}
+
+async function enviarCartaFirmadaAgente({
+  to,
+  nombreAgente,
+  propiedadClave,
+  pdfBuffer
+}) {
+  return resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to: [to],
+    subject: '📄 Carta Oferta Aceptada y Firmada',
+    html: `
+      <h2>📄 Carta Oferta Aceptada</h2>
+      <p>Hola <b>${nombreAgente}</b>,</p>
+      <p>
+        El propietario ha <b>aceptado y firmado</b> la carta oferta
+        de la propiedad <b>${propiedadClave}</b>.
+      </p>
+      <p>Se adjunta la carta firmada en PDF.</p>
+      <br/>
+      <p>— Equipo Thry24</p>
+    `,
+    attachments: [
+      {
+        filename: `Carta-Oferta-${propiedadClave}.pdf`,
+        content: pdfBuffer
+      }
+    ]
+  });
+}
+
+
+module.exports = {
+  enviarCredenciales,
+  enviarSolicitudColaboracion,
+  enviarCorreoContactoAgente,
+  enviarChecklistPropietario, 
+  enviarCartaOfertaPropietario,
+  enviarCartaFirmadaAgente
+};

@@ -2,6 +2,9 @@ const Colaboracion = require("../models/Colaboracion");
 const User = require("../models/User");
 const Propiedad = require("../models/Propiedad");
 const mongoose = require("mongoose");
+const Comision = require('../models/Comision');
+const Seguimiento = require('../models/Seguimiento');
+const Notificacion = require('../models/Notificacion');
 
 exports.comisionesInmobiliaria = async (req, res) => {
   try {
@@ -80,3 +83,92 @@ function calcularMensual(precio, porcentaje) {
 function calcularAnual(precio, porcentaje) {
   return calcularComisionUSD(precio, porcentaje);
 }
+
+exports.generarComision = async (req, res) => {
+  try {
+    const { seguimientoId, porcentaje, monto, notas } = req.body;
+    const user = req.user;
+
+    if (!seguimientoId || !porcentaje || !monto) {
+      return res.status(400).json({ msg: 'Datos incompletos' });
+    }
+
+    const seguimiento = await Seguimiento.findById(seguimientoId);
+    if (!seguimiento || seguimiento.estadoFinal !== 'GANADO') {
+      return res.status(400).json({ msg: 'El seguimiento no está ganado' });
+    }
+
+    const propiedad = await Propiedad.findById(seguimiento.propiedadId);
+
+    // 🔒 Evitar duplicados
+    const existe = await Comision.findOne({ seguimiento: seguimientoId });
+    if (existe) {
+      return res.status(400).json({ msg: 'La comisión ya fue generada' });
+    }
+
+    const comision = await Comision.create({
+      seguimiento: seguimientoId,
+      propiedad: propiedad._id,
+      agentePagador: propiedad.agenteEmail || seguimiento.agenteEmail,
+      agenteReceptor: seguimiento.agenteEmail,
+      tipoOperacion: seguimiento.tipoOperacion,
+      porcentaje,
+      monto,
+      notas
+    });
+
+    // 🔔 Notificaciones
+    await Notificacion.create({
+      usuarioEmail: comision.agenteReceptor,
+      mensaje: `Se generó un formato de comisión por ${monto}`,
+      tipo: 'sistema',
+      referenciaId: comision._id
+    });
+
+    await Notificacion.create({
+      usuarioEmail: comision.agentePagador,
+      mensaje: `Debes realizar el pago de comisión por ${monto}`,
+      tipo: 'contacto',
+      referenciaId: comision._id
+    });
+
+    res.json({ ok: true, comision });
+  } catch (err) {
+    console.error('❌ generarComision', err);
+    res.status(500).json({ msg: 'Error al generar comisión' });
+  }
+};
+exports.confirmarPagoComision = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const comision = await Comision.findById(id);
+    if (!comision) {
+      return res.status(404).json({ msg: 'Comisión no encontrada' });
+    }
+
+    comision.estado = 'PAGADA';
+    comision.fechaPago = new Date();
+    await comision.save();
+
+    // 🔔 Notificaciones
+    await Notificacion.create({
+      usuarioEmail: comision.agenteReceptor,
+      mensaje: `El pago de comisión fue confirmado`,
+      tipo: 'sistema',
+      referenciaId: comision._id
+    });
+
+    await Notificacion.create({
+      usuarioEmail: comision.agentePagador,
+      mensaje: `Confirmaste el pago de la comisión`,
+      tipo: 'sistema',
+      referenciaId: comision._id
+    });
+
+    res.json({ ok: true, comision });
+  } catch (err) {
+    console.error('❌ confirmarPagoComision', err);
+    res.status(500).json({ msg: 'Error al confirmar pago' });
+  }
+};

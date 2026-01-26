@@ -41,12 +41,20 @@ const propiedadSchema = new mongoose.Schema({
   descripcion: String,
 
   direccion: {
+    pais: { type: String, default: 'México' },
     estado: String,
     municipio: String,
     colonia: String,
+
+    calle: String,
+    numeroExterior: String,
+    numeroInterior: String,
+    codigoPostal: String,
+
     lat: Number,
     lng: Number,
   },
+
 
   estadoPropiedad: {
     type: String,
@@ -55,8 +63,12 @@ const propiedadSchema = new mongoose.Schema({
   },
 
   comision: {
-    porcentaje: Number,
-    comparte: Boolean,
+    comparte: { type: Boolean, default: false },
+
+    porcentaje: { type: Number },
+
+    venta: { type: Number },
+    renta: { type: Number },
   },
 
   datosPropietario: {

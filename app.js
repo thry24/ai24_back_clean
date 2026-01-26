@@ -88,7 +88,7 @@ app.use("/api/busquedas", require("./routes/busquedas.routes"));
 app.use("/api/upload", require("./routes/upload.routes"));
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 app.use("/api/inmobiliaria", require("./routes/inmobiliaria.routes"));
-
+app.use('/api/catalogos', require('./routes/catalogos.routes'));
 
 
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));

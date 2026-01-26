@@ -13,7 +13,6 @@ const UserSchema = new mongoose.Schema(
       required: true,
     },
 
-    // 🔹 Tipo de cliente (solo para clientes)
     tipoCliente: {
       type: String,
       enum: ["arrendatario", "comprador", "propietario"],

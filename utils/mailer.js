@@ -219,6 +219,29 @@ async function enviarCartaFirmadaAgente({
     ]
   });
 }
+async function enviarRecuperacionPassword({ to, nombre, password }) {
+  const html = `
+    <h2>🔐 Recuperación de contraseña</h2>
+    <p>Hola <b>${nombre}</b>,</p>
+
+    <p>Hemos generado una contraseña temporal para que accedas a Thry24.</p>
+
+    <p><b>Contraseña temporal:</b></p>
+    <h3>${password}</h3>
+
+    <p>Te recomendamos cambiarla una vez que inicies sesión.</p>
+
+    <br />
+    <p>— Equipo Thry24</p>
+  `;
+
+  return resend.emails.send({
+    from: 'Thry24 <verificaciones@thry24.com>',
+    to: [to],
+    subject: '🔐 Recupera tu acceso a Thry24',
+    html
+  });
+}
 
 
 module.exports = {
@@ -227,5 +250,6 @@ module.exports = {
   enviarCorreoContactoAgente,
   enviarChecklistPropietario, 
   enviarCartaOfertaPropietario,
-  enviarCartaFirmadaAgente
+  enviarCartaFirmadaAgente,
+  enviarRecuperacionPassword
 };

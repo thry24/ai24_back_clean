@@ -4,7 +4,7 @@ const bcrypt = require("bcryptjs");
 const UserSchema = new mongoose.Schema(
   {
     nombre: { type: String, required: true },
-    correo: { type: String, required: true },
+    correo: { type: String, required: true, unique: true },
     password: { type: String, required: true },
 
     rol: {
@@ -13,13 +13,14 @@ const UserSchema = new mongoose.Schema(
       required: true,
     },
 
+    // 🔹 SOLO PARA CLIENTES
     tipoCliente: {
       type: String,
       enum: ["arrendatario", "comprador", "propietario"],
       default: null,
     },
 
-    telefono: { type: String },
+    telefono: { type: String, unique: true, sparse: true },
     fotoPerfil: { type: String },
     firmaDigital: { type: String },
 
@@ -32,8 +33,13 @@ const UserSchema = new mongoose.Schema(
 
     googleId: { type: String, index: true, sparse: true },
     picture: String,
-    logo: { type: String },
-    inmobiliaria: { type: mongoose.Schema.Types.ObjectId, ref: "Inmobiliaria" },
+    logo: String,
+
+    inmobiliaria: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Inmobiliaria",
+      default: null,
+    },
 
     disponibilidad: [
       {
@@ -53,7 +59,6 @@ const UserSchema = new mongoose.Schema(
       },
     ],
 
-    // 🔹 Plan / Suscripción
     tipoPlan: {
       type: String,
       enum: ["gratis", "mensual", "anual"],
@@ -65,6 +70,7 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+
 // 🔒 Encriptar contraseña antes de guardar
 UserSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
@@ -75,6 +81,14 @@ UserSchema.pre("save", async function (next) {
   } catch (err) {
     next(err);
   }
+});
+UserSchema.pre("save", function (next) {
+  // 🚫 Si no es cliente, eliminamos tipoCliente
+  if (this.rol !== "cliente") {
+    this.tipoCliente = null;
+  }
+
+  next();
 });
 
 module.exports = mongoose.model("User", UserSchema);

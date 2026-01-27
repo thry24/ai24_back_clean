@@ -15,6 +15,12 @@ const emailVerificationSchema = new mongoose.Schema({
   telefono: { type: String },
   fotoPerfil: { type: String },
   firmaDigital: { type: String },
+  
+  tipoCliente: {
+    type: String,
+    enum: ['comprador', 'propietario', 'arrendatario'],
+    default: null
+  },
 
   logo: { type: String },
   inmobiliaria: { type: mongoose.Schema.Types.ObjectId, ref: "User" },

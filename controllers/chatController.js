@@ -20,20 +20,9 @@ function emitSocketTo(req, evento, payload, receptorEmail, emisorEmail) {
   if (fromRoom) io.to(fromRoom).emit(evento, payload);
 }
 
-// controllers/chatController.js
 exports.enviarMensaje = async (req, res) => {
   try {
     const user = req.user;
-    if (!user?.email && !user?.correo) {
-      return res.status(401).json({ msg: 'No autenticado' });
-    }
-
-    // 🚫 BLOQUEO TOTAL A AGENTES
-    if (user.rol === 'agente') {
-      return res.status(403).json({
-        msg: 'Los agentes NO pueden enviar mensajes por /chat. Usa /mensajes-agentes'
-      });
-    }
 
     const usuarioEmail = (user.email || user.correo || '').toLowerCase();
     const emisorEmail = String(req.body.emisorEmail || '').toLowerCase();
@@ -43,24 +32,23 @@ exports.enviarMensaje = async (req, res) => {
       return res.status(403).json({ msg: 'No puedes enviar como otro usuario' });
     }
 
-    const mensaje = String(req.body.mensaje || '');
-    const tipoDocumento = String(req.body.tipoDocumento || '');
-    const nombreCliente = String(req.body.nombreCliente || '');
+    const existeConversacion = await Mensaje.exists({
+      participantsHash: hashParticipants(emisorEmail, receptorEmail)
+    });
 
-    let archivoUrl = null;
-    if (req.file) {
-      const subida = await subirAGoogleStorage(req.file.path, 'ai24/chat');
-      archivoUrl = subida.url;
-      fs.unlink(req.file.path, () => {});
+    // 🚫 SOLO bloquea si el agente intenta INICIAR chat
+    if (user.rol === 'agente' && !existeConversacion) {
+      return res.status(403).json({
+        msg: 'Los agentes no pueden iniciar conversaciones con clientes'
+      });
     }
+
+    const mensaje = String(req.body.mensaje || '');
 
     const doc = await Mensaje.create({
       emisorEmail,
       receptorEmail,
       mensaje,
-      archivoUrl,
-      tipoDocumento,
-      nombreCliente,
       leido: false,
       fecha: new Date(),
       participantsHash: hashParticipants(emisorEmail, receptorEmail),
@@ -75,6 +63,7 @@ exports.enviarMensaje = async (req, res) => {
     return res.status(500).json({ msg: 'Error al enviar mensaje' });
   }
 };
+
 
 exports.obtenerConversacion = async (req, res) => {
   try {
@@ -207,9 +196,11 @@ exports.misThreads = async (req, res) => {
                 fotoPerfil: 1,
                 picture: 1,
                 logo: 1,
-                role: 1 // 👈 SOLO SE AÑADE ESTO
+                rol: 1,          // 👈 CORRECTO
+                tipoCliente: 1   // 👈 CLAVE
               }
             }
+
           ],
           as: 'otherUser'
         }
@@ -226,13 +217,12 @@ exports.misThreads = async (req, res) => {
       {
         $match: {
           $or: [
-            { 'otherUser.role': { $exists: false } },
-            { 'otherUser.role': { $ne: 'agente' } }
+            { 'otherUser.rol': { $exists: false } },
+            { 'otherUser.rol': { $ne: 'agente' } }
           ]
         }
       },
 
-      // 🔹 PROYECCIÓN FINAL (IGUAL QUE TENÍAS)
       {
         $project: {
           email: '$otherLower',
@@ -243,6 +233,10 @@ exports.misThreads = async (req, res) => {
               { $ifNull: ['$otherUser.picture', '$otherUser.logo'] }
             ]
           },
+
+          // 👇 AQUI
+          tipoCliente: { $ifNull: ['$otherUser.tipoCliente', null] },
+
           lastMessage: {
             _id: '$lastMessage._id',
             mensaje: '$lastMessage.mensaje',
@@ -253,6 +247,7 @@ exports.misThreads = async (req, res) => {
           }
         }
       },
+
 
       { $limit: 100 }
     ], { allowDiskUse: true });

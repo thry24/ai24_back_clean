@@ -20,28 +20,24 @@ function makeJwt(user) {
   );
 }
 
-
-// asumiendo que ya tienes importado tu modelo User
-// const User = require("../models/User");
-
 exports.listUsers = async (req, res) => {
   try {
-    const userId = req.user?.userId; // viene de verifyToken
+    const userId = req.user?.userId;
     const { q = "", role, page = 1, limit = 50 } = req.query;
 
     const filter = {
-      _id: { $ne: userId }, // no regreses al propio usuario
+      _id: { $ne: userId },
     };
 
     if (q) {
       filter.$or = [
-        { username: { $regex: q, $options: "i" } },
-        { email: { $regex: q, $options: "i" } },
+        { nombre: { $regex: q, $options: "i" } },
+        { correo: { $regex: q, $options: "i" } },
       ];
     }
 
     if (role) {
-      filter.rol = role; // ej: 'agente' | 'inmobiliaria' | 'admin'
+      filter.rol = role;
     }
 
     const pageN = Math.max(parseInt(page, 10) || 1, 1);
@@ -49,7 +45,7 @@ exports.listUsers = async (req, res) => {
 
     const [items, total] = await Promise.all([
       User.find(filter)
-        .select("_id nombre correo rol fotoPerfil")
+        .select("_id nombre correo rol fotoPerfil tipoCliente") // 👈 AQUÍ
         .sort({ nombre: 1 })
         .skip((pageN - 1) * limitN)
         .limit(limitN)
@@ -66,9 +62,13 @@ exports.listUsers = async (req, res) => {
     });
   } catch (err) {
     console.error("[listUsers] error:", err);
-    return res.status(500).json({ ok: false, error: "Error obteniendo usuarios" });
+    return res.status(500).json({
+      ok: false,
+      error: "Error obteniendo usuarios",
+    });
   }
 };
+
 
 exports.obtenerAgentes = async (req, res) => {
   try {
@@ -85,8 +85,17 @@ exports.obtenerAgentes = async (req, res) => {
 };
 
 exports.initRegister = async (req, res) => {
-  const { nombre, correo, password, rol, telefono, inmobiliaria, firmaBase64 } =
-    req.body;
+  const {
+    nombre,
+    correo,
+    password,
+    rol,
+    telefono,
+    inmobiliaria,
+    firmaBase64,
+    tipoCliente 
+  } = req.body;
+
   const passwordRegex =
     /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$/;
 
@@ -150,7 +159,14 @@ if (!passwordRegex.test(password)) {
         "ai24/firmas"
       );
     }
-
+    if (rol === 'cliente') {
+      const tiposValidos = ['comprador', 'propietario', 'arrendatario'];
+      if (!tipoCliente || !tiposValidos.includes(tipoCliente)) {
+        return res.status(400).json({
+          msg: 'Tipo de cliente inválido'
+        });
+      }
+    }
     const urlImagen = imagenSubida?.url || undefined;
     const urlFirma = firmaSubida?.url || undefined;
 
@@ -164,6 +180,7 @@ if (!passwordRegex.test(password)) {
       correo,
       password,
       rol,
+      tipoCliente: rol === 'cliente' ? tipoCliente : null,
       telefono: telefono || null,
       fotoPerfil: rol === "agente" ? urlImagen : undefined,
       logo: rol === "inmobiliaria" ? urlImagen : undefined,
@@ -267,12 +284,12 @@ exports.register = async (req, res) => {
       inmobiliariaAsignada = null;
     }
 
-    // 🧩 Crear usuario final
     const nuevoUsuario = new User({
       nombre: verif.nombre,
       correo: verif.correo,
       password: verif.password,
       rol: verif.rol,
+      tipoCliente: verif.tipoCliente, // ✅ AQUÍ
       telefono: verif.telefono,
       firmaDigital: verif.firmaDigital,
       fotoPerfil: verif.fotoPerfil,
@@ -282,6 +299,7 @@ exports.register = async (req, res) => {
       planActivo: false,
       planExpira: null,
     });
+
 
     await nuevoUsuario.save();
     await EmailVerification.deleteOne({ correo });

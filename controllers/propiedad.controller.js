@@ -6,7 +6,7 @@ const Busqueda = require("../models/Busqueda");
 const Notificacion = require('../models/Notificacion');
 const Colaboracion = require('../models/Colaboracion');
 const { crearNotificacion } = require('../utils/notificaciones');
-const { enviarCorreoContactoAgente } = require('../utils/mailer');
+const { enviarSolicitudColaboracion, enviarCorreoContactoAgente } = require('../utils/mailer');
 const Lead = require('../models/Lead');
 const fs = require("fs");
 const path = require("path");
@@ -1036,6 +1036,17 @@ exports.incrementarContacto = async (req, res) => {
         { upsert: true, new: true }
       );
 
+      try {
+        await enviarSolicitudColaboracion({
+          to: agenteEmail,
+          agenteNombre: user.nombre,
+          propiedadClave: propiedad.clave,
+          imagenPropiedad: propiedad.imagenPrincipal,
+        });
+      } catch (e) {
+        console.error('❌ Error enviando correo de colaboración', e);
+      }
+
       await Notificacion.create({
         usuarioEmail: agenteEmail,
         mensaje: `Un agente quiere colaborar contigo por la propiedad ${propiedad.clave}`,
@@ -1094,6 +1105,21 @@ exports.incrementarContacto = async (req, res) => {
         ubicacion: `${propiedad.direccion?.municipio}, ${propiedad.direccion?.estado}`,
       },
     });
+
+    // 📧 ENVIAR CORREO AL AGENTE
+    try {
+      await enviarCorreoContactoAgente({
+        to: agenteEmail,
+        agenteNombre: propiedad.agente?.nombre || 'Agente',
+        clienteNombre: nombreFinal,
+        tipoCliente: tipoClienteFinal,
+        propiedadClave: propiedad.clave,
+        imagenPropiedad: propiedad.imagenPrincipal,
+        mensaje: citaMensaje || 'Estoy interesado en esta propiedad',
+      });
+    } catch (e) {
+      console.error('❌ Error enviando correo al agente', e);
+    }
 
     await Notificacion.create({
       usuarioEmail: agenteEmail,

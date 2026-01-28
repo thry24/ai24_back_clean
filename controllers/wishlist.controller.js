@@ -122,3 +122,42 @@ exports.obtenerFavoritos = async (req, res) => {
     res.status(500).json({ msg: 'Error al obtener favoritos.' });
   }
 };
+// controller
+exports.obtenerFavoritosClienteLogueado = async (req, res) => {
+  try {
+    const usuarioId = req.user.id;
+
+    const favoritos = await Wishlist.find({ usuario: usuarioId })
+      .populate({
+        path: "propiedad",
+        select: `
+          clave
+          tituloPropiedad
+          tipoPropiedad
+          tipoOperacion
+          precio
+          imagenPrincipal
+          imagenes
+          direccion
+          estadoPropiedad
+        `
+      })
+      .lean();
+
+    res.json(
+      favoritos.map(f => ({
+        id: f.propiedad?._id,
+        clave: f.propiedad?.clave,
+        tituloPropiedad: f.propiedad?.tituloPropiedad,
+        tipoOperacion: f.propiedad?.tipoOperacion,
+        tipoPropiedad: f.propiedad?.tipoPropiedad,
+        precio: f.propiedad?.precio,
+        imagen: f.propiedad?.imagenPrincipal,
+        direccion: f.propiedad?.direccion
+      }))
+    );
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Error obteniendo favoritos" });
+  }
+};

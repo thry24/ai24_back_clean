@@ -31,12 +31,18 @@ const seleccionSchema = new mongoose.Schema(
       enum: ['CLIENTE', 'AGENTE'],
       required: true,
     },
-
     estado: {
       type: String,
-      enum: ['SELECCIONADA', 'DESCARTADA'],
-      default: 'SELECCIONADA',
-    },
+      enum: [
+        'INTERESADA',          // cliente marcó
+        'SUGERIDA',            // agente sugirió
+        'PENDIENTE_RECORRIDO', // 🔔 esperando aprobación del dueño
+        'APROBADA_RECORRIDO',  // 🚗 entra a recorridos
+        'CONFIRMADA',          // 🏁 elección final
+        'DESCARTADA'
+      ],
+      default: 'INTERESADA'
+    }
   },
   { timestamps: true }
 );

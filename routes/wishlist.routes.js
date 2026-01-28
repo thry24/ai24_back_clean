@@ -8,5 +8,6 @@ router.get("/cliente/:clienteEmail", verifyToken, obtenerFavoritosClientePorAgen
 router.post('/wishlist', verifyToken, controller.agregarAFavoritos);
 router.delete('/wishlist/:propiedadId', verifyToken, controller.eliminarDeFavoritos);
 router.get('/wishlist', tokenOpcional, controller.obtenerFavoritos);
+router.get('/wishlist/cliente/me', verifyToken, controller.obtenerFavoritosClienteLogueado);
 
 module.exports = router;

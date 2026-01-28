@@ -364,3 +364,113 @@ exports.confirmarEleccion = async (req, res) => {
     res.status(500).json({ msg: 'Error al confirmar elección' });
   }
 };
+exports.aprobarRecorrido = async (req, res) => {
+  try {
+    const { seguimientoId, propiedades } = req.body;
+    const user = req.user; // agente autenticado
+
+    const seguimiento = await Seguimiento.findById(seguimientoId);
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    const results = [];
+
+    for (const propiedadId of propiedades) {
+      const propiedad = await Propiedad.findById(propiedadId).populate(
+        'agente',
+        'correo email nombre'
+      );
+
+      if (!propiedad) continue;
+
+      const correoPropietario =
+        propiedad.agente.correo || propiedad.agente.email;
+
+      const esMia = correoPropietario === seguimiento.agenteEmail;
+
+      const estado = esMia
+        ? 'APROBADA_RECORRIDO'
+        : 'PENDIENTE_RECORRIDO';
+
+      const seleccion = await SeleccionPropiedad.findOneAndUpdate(
+        { seguimiento: seguimientoId, propiedad: propiedadId },
+        {
+          seguimiento: seguimientoId,
+          propiedad: propiedadId,
+          clienteEmail: seguimiento.clienteEmail,
+          agenteEmail: seguimiento.agenteEmail,
+          origen: 'CLIENTE',
+          estado
+        },
+        { new: true }
+      );
+
+      // 📩 NOTIFICACIONES
+      if (esMia) {
+        await Notificacion.create({
+          usuarioEmail: seguimiento.clienteEmail,
+          mensaje: `La propiedad ${propiedad.clave} está disponible para recorrido.`,
+          tipo: 'recorrido'
+        });
+      } else {
+        // correo + notificación al agente dueño
+        await enviarCorreoContactoAgente({
+          to: correoPropietario,
+          agenteNombre: propiedad.agente.nombre,
+          clienteNombre: seguimiento.clienteNombre,
+          propiedadClave: propiedad.clave,
+          mensaje: 'Un cliente desea visitar tu propiedad. ¿Está disponible para recorrido?'
+        });
+
+        await Notificacion.create({
+          usuarioEmail: correoPropietario,
+          mensaje: `Solicitud de recorrido para la propiedad ${propiedad.clave}`,
+          tipo: 'recorrido'
+        });
+      }
+
+      results.push(seleccion);
+    }
+
+    res.json({ ok: true, results });
+
+  } catch (err) {
+    console.error('❌ aprobarRecorrido', err);
+    res.status(500).json({ msg: 'Error al aprobar recorrido' });
+  }
+};
+exports.aceptarRecorrido = async (req, res) => {
+  try {
+    const { seleccionId } = req.body;
+
+    const seleccion = await SeleccionPropiedad.findById(seleccionId)
+      .populate('propiedad seguimiento');
+
+    if (!seleccion) {
+      return res.status(404).json({ msg: 'Selección no encontrada' });
+    }
+
+    seleccion.estado = 'APROBADA_RECORRIDO';
+    await seleccion.save();
+
+    // 🔔 Notificaciones cruzadas
+    await Notificacion.create({
+      usuarioEmail: seleccion.agenteEmail,
+      mensaje: `La propiedad ${seleccion.propiedad.clave} fue aprobada para recorrido.`,
+      tipo: 'recorrido'
+    });
+
+    await Notificacion.create({
+      usuarioEmail: seleccion.clienteEmail,
+      mensaje: `Tu recorrido para ${seleccion.propiedad.clave} fue aprobado.`,
+      tipo: 'recorrido'
+    });
+
+    res.json({ ok: true, seleccion });
+
+  } catch (err) {
+    console.error('❌ aceptarRecorrido', err);
+    res.status(500).json({ msg: 'Error al aceptar recorrido' });
+  }
+};

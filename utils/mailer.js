@@ -243,6 +243,90 @@ async function enviarRecuperacionPassword({ to, nombre, password }) {
   });
 }
 
+// ===============================
+// 🚶 Solicitud de recorrido
+// ===============================
+async function enviarSolicitudRecorrido({
+  to,
+  agenteNombre,
+  clienteNombre,
+  propiedadClave,
+  imagenPropiedad,
+}) {
+  const html = `
+    <h2>🚶 Solicitud de recorrido</h2>
+
+    <p>Hola <b>${agenteNombre}</b>,</p>
+
+    <p>
+      Tienes un cliente interesado en tu propiedad:
+    </p>
+
+    <h3>${propiedadClave}</h3>
+
+    ${imagenPropiedad ? `<img src="${imagenPropiedad}" width="320"/>` : ''}
+
+    <p>
+      Por favor confirma si la propiedad está disponible para agendar
+      un recorrido.
+    </p>
+
+    <p>
+      Ingresa a Thry24 para confirmar o rechazar la solicitud.
+    </p>
+
+    <br />
+    <p>— Equipo Thry24</p>
+  `;
+
+  const result = await resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to: [to],   // 👈 importante que sea array
+    subject: `🚶 Solicitud de recorrido – ${propiedadClave}`,
+    html
+  });
+
+  console.log('📨 Resend response:', result);
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  return result;
+}
+// ===============================
+// 🚶 Recorrido confirmado
+// ===============================
+async function enviarRecorridoConfirmadoCliente({
+  to,
+  clienteNombre,
+  propiedadClave
+}) {
+  const html = `
+    <h2>🚶 Recorrido confirmado</h2>
+
+    <p>Hola <b>${clienteNombre}</b>,</p>
+
+    <p>
+      Tu recorrido para la propiedad <b>${propiedadClave}</b>
+      ha sido confirmado.
+    </p>
+
+    <p>
+      Tu asesor se pondrá en contacto contigo para coordinar la fecha y hora.
+    </p>
+
+    <br />
+    <p>— Equipo Thry24</p>
+  `;
+
+  return resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to: [to],
+    subject: `🚶 Recorrido confirmado – ${propiedadClave}`,
+    html
+  });
+}
 
 module.exports = {
   enviarCredenciales,
@@ -251,5 +335,7 @@ module.exports = {
   enviarChecklistPropietario, 
   enviarCartaOfertaPropietario,
   enviarCartaFirmadaAgente,
-  enviarRecuperacionPassword
+  enviarRecuperacionPassword, 
+  enviarSolicitudRecorrido,
+  enviarRecorridoConfirmadoCliente
 };

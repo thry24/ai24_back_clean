@@ -1,7 +1,10 @@
 const mongoose = require('mongoose');
 
 const RecorridoSchema = new mongoose.Schema({
-  fecha: { type: Date, required: true },
+  fecha: {
+    type: Date,
+    default: null
+  },
   tipo: { type: String },
   asesor: { type: String },
   direccion: { type: String },

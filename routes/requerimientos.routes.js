@@ -147,6 +147,60 @@ const requerimientos = await Requerimiento.find({
   }
 });
 
+
+/* ======================================================
+   OBTENER REQUERIMIENTOS DE OTROS AGENTES (OTRAS INMOs)
+====================================================== */
+router.get('/otros', verificarToken, async (req, res) => {
+  try {
+    console.log('📥 GET /requerimientos/otros');
+
+    const myInmoId =
+      req.user.rol === 'inmobiliaria'
+        ? req.user.id
+        : req.user.inmobiliaria;
+
+    const requerimientos = await Requerimiento.find({
+      rolCreador: 'agente',
+      inmobiliaria: { $ne: myInmoId }
+    })
+      .populate('creadoPor', 'nombre correo fotoPerfil rol')
+      .sort({ creadoEn: -1 })
+      .lean();
+
+    const resultado = requerimientos.map(r => ({
+      _id: r._id,
+      tipoOperacion: r.tipoOperacion,
+      tipoPropiedad: r.tipoPropiedad,
+      ciudad: r.ciudad || "",
+      zonas: r.zonas || [],
+      caracteristicas: r.caracteristicas,
+      presupuesto: r.presupuesto,
+      formaPago: r.formaPago,
+      tipoGarantia: r.tipoGarantia,
+      numeroMascotas: r.numeroMascotas,
+      fechaOperacion: r.fechaOperacion,
+      creadoEn: r.creadoEn,
+
+      rolCreador: r.rolCreador,
+      inmobiliaria: r.inmobiliaria,
+
+      // ✅ datos para tu tabla
+      nombreAgente: r.creadoPor?.nombre || r.nombreAgente || 'Sin nombre',
+      fotoAgente: r.creadoPor?.fotoPerfil || '',
+      creadoPorId: r.creadoPor?._id || r.creadoPor
+    }));
+
+    console.log('📊 Total otros:', resultado.length);
+    res.json(resultado);
+  } catch (error) {
+    console.error('🔥 ERROR GET /requerimientos/otros:', error);
+    res.status(500).json({ mensaje: 'Error al obtener requerimientos de otros agentes' });
+  }
+});
+
+
+
 /* ======================================================
    AGENTES DE UNA INMOBILIARIA
 ====================================================== */

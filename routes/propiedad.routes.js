@@ -62,7 +62,7 @@ router.get(
 router.post(
   "/propiedades",
   verifyToken,
-  permitirRoles("agente"),
+  permitirRoles("agente", "inmobiliaria"),
   uploadMultiple,
   propiedadController.agregarPropiedad
 );

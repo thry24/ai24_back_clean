@@ -108,11 +108,14 @@ exports.listadoPropiedadesInmobiliaria = async (req, res) => {
 
     const agentesIds = agentes.map(a => a._id);
 
-    const propiedades = await Propiedad.find({
-      agente: { $in: agentesIds }
-    })
-    .populate("agente", "nombre fotoPerfil correo email")
-    .lean();
+      const propiedades = await Propiedad.find({
+        $or: [
+          { agente: { $in: agentesIds } },
+          { inmobiliaria: id } // 👈 incluye las creadas por la inmobiliaria
+        ]
+      })
+      .populate("agente", "nombre fotoPerfil correo email")
+      .lean();
 
     const resultado = propiedades.map(p => ({
       _id: p._id,
@@ -278,23 +281,40 @@ exports.agregarPropiedad = async (req, res) => {
     );
 
     // 4️⃣ Creación del documento (DESPUÉS de limpiar)
-    const propiedad = new Propiedad({
-      tipoOperacion,
-      tipoPropiedad,
-      precio,
-      precioRenta: precioRentaFinal,
-      descripcion,
-      direccion,
-      estadoPropiedad,
-      comision,
-      datosPropietario,
-      caracteristicas,
-      generales,
-      servicios,
-      amenidades,
-      agente: req.user.id,
-      inmobiliaria: inmobiliaria || null,
-    });
+const rol = (req.user?.rol || "").toLowerCase();
+
+let agenteId = null;
+let inmobiliariaId = null;
+
+if (rol === "agente") {
+  agenteId = req.user.id;
+  // si el agente pertenece a una inmobiliaria, úsala
+  inmobiliariaId = req.user.inmobiliaria || inmobiliaria || null;
+} else if (rol === "inmobiliaria") {
+  inmobiliariaId = req.user.id;
+  agenteId = null;
+} else {
+  return res.status(403).json({ msg: "Acceso denegado: rol no autorizado." });
+}
+
+const propiedad = new Propiedad({
+  tipoOperacion,
+  tipoPropiedad,
+  precio,
+  precioRenta: precioRentaFinal,
+  descripcion,
+  direccion,
+  estadoPropiedad,
+  comision,
+  datosPropietario,
+  caracteristicas,
+  generales,
+  servicios,
+  amenidades,
+  agente: agenteId,
+  inmobiliaria: inmobiliariaId,
+});
+
 
     // 5️⃣ Archivos adjuntos
     if (req.files?.archivos) {

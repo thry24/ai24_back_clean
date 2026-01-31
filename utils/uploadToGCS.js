@@ -5,37 +5,75 @@ const fs = require("fs");
 require("dotenv").config();
 
 // =============================================
-// 🔥 Cargar credenciales desde variable de entorno
+// ✅ Construir credenciales desde GCLOUD_*
 // =============================================
-let serviceAccount = null;
+function getServiceAccountFromEnv() {
+  const required = [
+    "GCLOUD_PROJECT_ID",
+    "GCLOUD_CLIENT_EMAIL",
+    "GCLOUD_PRIVATE_KEY",
+    "GCLOUD_BUCKET_NAME",
+  ];
 
-try {
-  serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_KEY);
-
-  // Reemplazar saltos de línea escapados en private_key
-  if (serviceAccount.private_key) {
-    serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, "\n");
+  const missing = required.filter((k) => !process.env[k]);
+  if (missing.length) {
+    throw new Error(`Faltan variables de entorno: ${missing.join(", ")}`);
   }
-} catch (err) {
-  console.error("❌ ERROR: GOOGLE_SERVICE_KEY no es un JSON válido.");
-  console.error(err);
+
+  return {
+    type: process.env.GCLOUD_TYPE || "service_account",
+    project_id: process.env.GCLOUD_PROJECT_ID,
+    private_key_id: process.env.GCLOUD_PRIVATE_KEY_ID,
+    private_key: (process.env.GCLOUD_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    client_email: process.env.GCLOUD_CLIENT_EMAIL,
+    client_id: process.env.GCLOUD_CLIENT_ID,
+    auth_uri: process.env.GCLOUD_AUTH_URI,
+    token_uri: process.env.GCLOUD_TOKEN_URI,
+    auth_provider_x509_cert_url: process.env.GCLOUD_AUTH_PROVIDER_X509_CERT_URL,
+    client_x509_cert_url: process.env.GCLOUD_CLIENT_X509_CERT_URL,
+    universe_domain: process.env.GCLOUD_UNIVERSE_DOMAIN,
+  };
 }
 
 // =============================================
 // 🚀 Inicializar Google Cloud Storage
 // =============================================
-const storage = new Storage({
-  credentials: serviceAccount,
-});
+let bucket = null;
 
-const bucketName = process.env.GCLOUD_BUCKET_NAME;
-const bucket = storage.bucket(bucketName);
+try {
+  const serviceAccount = getServiceAccountFromEnv();
+
+  const storage = new Storage({
+    projectId: serviceAccount.project_id,
+    credentials: serviceAccount,
+  });
+
+  bucket = storage.bucket(process.env.GCLOUD_BUCKET_NAME);
+} catch (err) {
+  console.error("❌ Error inicializando Google Cloud Storage:");
+  console.error(err.message);
+}
+
+// Helper: validar bucket
+function ensureBucket() {
+  if (!bucket) {
+    throw new Error(
+      "Bucket no inicializado. Revisa credenciales GCLOUD_* y dotenv."
+    );
+  }
+}
 
 // =============================================
 // 📌 Subir archivo desde ruta local
 // =============================================
 async function subirAGoogleStorage(filePath, folder = "uploads") {
   return new Promise((resolve, reject) => {
+    try {
+      ensureBucket();
+    } catch (e) {
+      return reject(e);
+    }
+
     const fileName = path.basename(filePath);
     const destination = `${folder}/${Date.now()}_${fileName}`;
     const fileUpload = bucket.file(destination);
@@ -48,8 +86,16 @@ async function subirAGoogleStorage(filePath, folder = "uploads") {
     stream.on("error", (err) => reject(err));
 
     stream.on("finish", async () => {
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
-      resolve({ url: publicUrl, public_id: destination });
+      try {
+        // ✅ Si necesitas URL accesible desde front/pdf:
+        // (Si tu bucket NO permite, esto lanzará error)
+        await fileUpload.makePublic();
+
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
+        resolve({ url: publicUrl, public_id: destination });
+      } catch (e) {
+        reject(e);
+      }
     });
 
     fs.createReadStream(filePath).pipe(stream);
@@ -61,6 +107,12 @@ async function subirAGoogleStorage(filePath, folder = "uploads") {
 // =============================================
 async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
   return new Promise((resolve, reject) => {
+    try {
+      ensureBucket();
+    } catch (e) {
+      return reject(e);
+    }
+
     const extension = path.extname(filename) || ".png";
     const uniqueName = `${folder}/${Date.now()}_${uuidv4()}${extension}`;
     const file = bucket.file(uniqueName);
@@ -72,9 +124,16 @@ async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
 
     stream.on("error", reject);
 
-    stream.on("finish", () => {
-      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${uniqueName}`;
-      resolve({ url: publicUrl, public_id: uniqueName });
+    stream.on("finish", async () => {
+      try {
+        // ✅ Si necesitas URL accesible desde front/pdf:
+        await file.makePublic();
+
+        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${uniqueName}`;
+        resolve({ url: publicUrl, public_id: uniqueName });
+      } catch (e) {
+        reject(e);
+      }
     });
 
     stream.end(buffer);
@@ -86,6 +145,7 @@ async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
 // =============================================
 async function eliminarDeGoogleStorage(publicId) {
   try {
+    ensureBucket();
     const file = bucket.file(publicId);
     await file.delete();
     console.log(`✔ Archivo eliminado: ${publicId}`);

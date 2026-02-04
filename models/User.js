@@ -5,8 +5,12 @@ const UserSchema = new mongoose.Schema(
   {
     nombre: { type: String, required: true },
     correo: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-
+    password: {
+      type: String,
+      required: function () {
+        return this.authProvider === "local";
+        },
+      },
     rol: {
       type: String,
       enum: ["cliente", "agente", "inmobiliaria", "propietario"],
@@ -73,6 +77,7 @@ const UserSchema = new mongoose.Schema(
 
 // 🔒 Encriptar contraseña antes de guardar
 UserSchema.pre("save", async function (next) {
+  if (!this.password) return next(); // <- clave para google users
   if (!this.isModified("password")) return next();
   try {
     const salt = await bcrypt.genSalt(10);
@@ -82,6 +87,7 @@ UserSchema.pre("save", async function (next) {
     next(err);
   }
 });
+
 UserSchema.pre("save", function (next) {
   // 🚫 Si no es cliente, eliminamos tipoCliente
   if (this.rol !== "cliente") {

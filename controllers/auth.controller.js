@@ -5,6 +5,9 @@ const { sendVerificationCode } = require("../utils/sendVerificationCode");
 const jwt = require("jsonwebtoken");
 const { verifyGoogleIdToken } = require('../services/googleVerify');
 const bcrypt = require("bcryptjs");
+
+
+
 const {
   subirAGoogleStorage,
   subirBufferAGoogleStorage,
@@ -632,4 +635,107 @@ exports.googleSignIn = async (req, res) => {
     console.error('[googleSignIn] error:', err);
     return res.status(err.status || 500).json({ msg: err.message || 'Error con Google Sign-In' });
   }
+
+
+
+const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
+const User = require("../models/User");
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+function firmarJWT(user) {
+  // AJUSTA esto a como ya firmes tokens en tu /login actual
+  return jwt.sign(
+    { uid: user._id.toString(), rol: user.rol },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+exports.googleSignIn = async (req, res) => {
+  try {
+    const { credential } = req.body; // <- viene del frontend GIS
+    if (!credential) return res.status(400).json({ msg: "Falta credential" });
+
+    // 1) Verifica token con Google
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    // payload trae: sub, email, name, picture, email_verified, etc.
+    const googleId = payload?.sub;
+    const correo = (payload?.email || "").toLowerCase().trim();
+    const nombre = payload?.name || "Usuario";
+    const picture = payload?.picture || "";
+
+    if (!correo || !googleId) {
+      return res.status(401).json({ msg: "Token Google inválido" });
+    }
+
+    // 2) Buscar usuario por correo (más práctico en tu app)
+    let user = await User.findOne({ correo });
+
+    if (!user) {
+      // Crear usuario nuevo
+      user = await User.create({
+        nombre,
+        correo,
+        rol: "cliente",          // <- aquí define tu default
+        tipoCliente: null,       // o lo que quieras
+        authProvider: "google",
+        googleId,
+        picture,
+        fotoPerfil: picture,     // si quieres usarlo como fotoPerfil
+      });
+    } else {
+      // Si existe: vincula googleId si no estaba
+      const needsUpdate =
+        user.googleId !== googleId ||
+        user.authProvider !== "google" ||
+        user.picture !== picture;
+
+      if (needsUpdate) {
+        user.googleId = googleId;
+        user.picture = picture;
+        user.fotoPerfil = user.fotoPerfil || picture;
+
+        // OJO: si ya era "local", puedes:
+        // - dejarlo "local" para permitir login por password
+        // - o cambiarlo a "google" si quieres forzar google login
+        // Yo recomiendo NO romper el login local:
+        if (!user.authProvider) user.authProvider = "local";
+        // Si sí quieres marcarlo google si fue creado antes:
+        // user.authProvider = user.authProvider === "local" ? "local" : "google";
+
+        await user.save();
+      }
+    }
+
+    // 3) Emitir TU JWT
+    const token = firmarJWT(user);
+
+    // 4) Respuesta
+    res.json({
+      token,
+      user: {
+        _id: user._id,
+        nombre: user.nombre,
+        correo: user.correo,
+        rol: user.rol,
+        fotoPerfil: user.fotoPerfil,
+        tipoPlan: user.tipoPlan,
+        planActivo: user.planActivo,
+      },
+    });
+  } catch (err) {
+    console.error("googleSignIn error:", err);
+    res.status(500).json({ msg: "Error en Google Sign-In" });
+  }
+};
+
+
+
 };

@@ -39,7 +39,8 @@ router.put(
   register.actualizarLogo
 );
 
-router.post('/auth/google', register.googleSignIn);
+router.post('/google', register.googleSignIn);
+
 
 router.post('/recuperar-password', async (req, res) => {
   try {

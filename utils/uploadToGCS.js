@@ -4,9 +4,7 @@ const { v4: uuidv4 } = require("uuid");
 const fs = require("fs");
 require("dotenv").config();
 
-// =============================================
-// ✅ Construir credenciales desde GCLOUD_*
-// =============================================
+// Construir credenciales desde variables de entorno GCLOUD_*
 function getServiceAccountFromEnv() {
   const required = [
     "GCLOUD_PROJECT_ID",
@@ -24,7 +22,7 @@ function getServiceAccountFromEnv() {
     type: process.env.GCLOUD_TYPE || "service_account",
     project_id: process.env.GCLOUD_PROJECT_ID,
     private_key_id: process.env.GCLOUD_PRIVATE_KEY_ID,
-    private_key: (process.env.GCLOUD_PRIVATE_KEY || "").replace(/\\n/g, "\n"),
+    private_key: process.env.GCLOUD_PRIVATE_KEY.replace(/\\n/g, "\n"),
     client_email: process.env.GCLOUD_CLIENT_EMAIL,
     client_id: process.env.GCLOUD_CLIENT_ID,
     auth_uri: process.env.GCLOUD_AUTH_URI,
@@ -35,9 +33,7 @@ function getServiceAccountFromEnv() {
   };
 }
 
-// =============================================
-// 🚀 Inicializar Google Cloud Storage
-// =============================================
+// Inicializar Google Cloud Storage
 let bucket = null;
 
 try {
@@ -54,7 +50,6 @@ try {
   console.error(err.message);
 }
 
-// Helper: validar bucket
 function ensureBucket() {
   if (!bucket) {
     throw new Error(
@@ -63,95 +58,56 @@ function ensureBucket() {
   }
 }
 
-// =============================================
-// 📌 Subir archivo desde ruta local
-// =============================================
+// Subir archivo desde ruta local
 async function subirAGoogleStorage(filePath, folder = "uploads") {
-  return new Promise((resolve, reject) => {
-    try {
-      ensureBucket();
-    } catch (e) {
-      return reject(e);
-    }
+  ensureBucket();
 
-    const fileName = path.basename(filePath);
-    const destination = `${folder}/${Date.now()}_${fileName}`;
-    const fileUpload = bucket.file(destination);
+  const fileName = path.basename(filePath);
+  const destination = `${folder}/${Date.now()}_${fileName}`;
+  const fileUpload = bucket.file(destination);
 
-    const stream = fileUpload.createWriteStream({
-      resumable: false,
-      metadata: { contentType: "auto" },
-    });
-
-    stream.on("error", (err) => reject(err));
-
-    stream.on("finish", async () => {
-      try {
-        // ✅ Si necesitas URL accesible desde front/pdf:
-        // (Si tu bucket NO permite, esto lanzará error)
-        await fileUpload.makePublic();
-
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${destination}`;
-        resolve({ url: publicUrl, public_id: destination });
-      } catch (e) {
-        reject(e);
-      }
-    });
-
-    fs.createReadStream(filePath).pipe(stream);
+  await bucket.upload(filePath, {
+    destination,
+    resumable: false,
+    metadata: { contentType: "auto" },
   });
+
+  // Generar signed URL en lugar de makePublic
+  const [url] = await fileUpload.getSignedUrl({
+    action: "read",
+    expires: Date.now() + 1000 * 60 * 60, // 1 hora de validez
+  });
+
+  return { url, public_id: destination };
 }
 
-// =============================================
-// 📌 Subir archivo desde Buffer (firma base64, etc.)
-// =============================================
+// Subir archivo desde Buffer
 async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
-  return new Promise((resolve, reject) => {
-    try {
-      ensureBucket();
-    } catch (e) {
-      return reject(e);
-    }
+  ensureBucket();
 
-    const extension = path.extname(filename) || ".png";
-    const uniqueName = `${folder}/${Date.now()}_${uuidv4()}${extension}`;
-    const file = bucket.file(uniqueName);
+  const extension = path.extname(filename) || ".png";
+  const uniqueName = `${folder}/${Date.now()}_${uuidv4()}${extension}`;
+  const file = bucket.file(uniqueName);
 
-    const stream = file.createWriteStream({
-      resumable: false,
-      metadata: { contentType: "image/png" },
-    });
-
-    stream.on("error", reject);
-
-    stream.on("finish", async () => {
-      try {
-        // ✅ Si necesitas URL accesible desde front/pdf:
-        await file.makePublic();
-
-        const publicUrl = `https://storage.googleapis.com/${bucket.name}/${uniqueName}`;
-        resolve({ url: publicUrl, public_id: uniqueName });
-      } catch (e) {
-        reject(e);
-      }
-    });
-
-    stream.end(buffer);
+  await file.save(buffer, {
+    resumable: false,
+    contentType: "image/png",
   });
+
+  const [url] = await file.getSignedUrl({
+    action: "read",
+    expires: Date.now() + 1000 * 60 * 60, // 1 hora
+  });
+
+  return { url, public_id: uniqueName };
 }
 
-// =============================================
-// 📌 Eliminar archivo del bucket
-// =============================================
+// Eliminar archivo del bucket
 async function eliminarDeGoogleStorage(publicId) {
-  try {
-    ensureBucket();
-    const file = bucket.file(publicId);
-    await file.delete();
-    console.log(`✔ Archivo eliminado: ${publicId}`);
-  } catch (error) {
-    console.error("❌ Error al eliminar de Google Storage:", error.message);
-  }
+  ensureBucket();
+  const file = bucket.file(publicId);
+  await file.delete();
+  console.log(`✔ Archivo eliminado: ${publicId}`);
 }
 
 module.exports = {

@@ -24,17 +24,17 @@ exports.obtenerClientesDelAgente = async (req, res) => {
 
     const clientes = relaciones
       .filter(r => r.cliente) // 🔥 elimina agentes automáticamente
-.map(r => ({
-  _id: r.cliente._id,
-  nombre: r.cliente.nombre,
-  email: r.cliente.correo,
-  telefono: r.cliente.telefono || "—",
-  tipoCliente: r.tipoCliente || r.cliente.tipoCliente || "—",
-  tipoOperacion: r.tipoOperacion || "—", // 👈 FALTABA
-  fechaRegistro: r.createdAt,
-  origen: "relacion",
-  status: "activo",
-}));
+      .map(r => ({
+        _id: r.cliente._id,
+        nombre: r.cliente.nombre,
+        email: r.cliente.correo,
+        telefono: r.cliente.telefono || "—",
+        tipoCliente: r.tipoCliente || r.cliente.tipoCliente || "—",
+        tipoOperacion: r.tipoOperacion || "—", // 👈 FALTABA
+        fechaRegistro: r.createdAt,
+        origen: "relacion",
+        status: "activo",
+      }));
 
     res.json(clientes);
   } catch (error) {

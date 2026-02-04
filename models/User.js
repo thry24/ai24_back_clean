@@ -71,24 +71,25 @@ const UserSchema = new mongoose.Schema(
 );
 
 
-// 🔒 Encriptar contraseña antes de guardar
-UserSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (err) {
-    next(err);
-  }
-});
-UserSchema.pre("save", function (next) {
-  // 🚫 Si no es cliente, eliminamos tipoCliente
-  if (this.rol !== "cliente") {
-    this.tipoCliente = null;
-  }
+  // 🔒 Encriptar contraseña antes de guardar
+  UserSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) return next();
+    try {
+      const salt = await bcrypt.genSalt(10);
+      this.password = await bcrypt.hash(this.password, salt);
+      next();
+    } catch (err) {
+      next(err);
+    }
+  });
 
-  next();
-});
+  UserSchema.pre("save", function (next) {
+    // 🚫 Si no es cliente, eliminamos tipoCliente
+    if (this.rol !== "cliente") {
+      this.tipoCliente = null;
+    }
+
+    next();
+  });
 
 module.exports = mongoose.model("User", UserSchema);

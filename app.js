@@ -121,6 +121,7 @@ io.on("connection", (socket) => {
   if (email) socket.join(email);
   socket.on("disconnect", () => {});
 });
+console.log("NODE_OPTIONS =", process.env.NODE_OPTIONS);
 
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);

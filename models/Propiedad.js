@@ -1,6 +1,12 @@
 const mongoose = require("mongoose");
 
 const propiedadSchema = new mongoose.Schema({
+  titulo: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 120
+  },
   tipoOperacion: { type: String, enum: ["venta", "renta","venta/renta"], required: true },
   tipoPropiedad: {
     type: String,

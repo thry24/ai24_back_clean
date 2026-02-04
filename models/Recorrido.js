@@ -1,25 +1,102 @@
 const mongoose = require('mongoose');
 
-const RecorridoSchema = new mongoose.Schema({
-  fecha: {
-    type: Date,
-    default: null
+const RecorridoSchema = new mongoose.Schema(
+  {
+    // 🗓️ Fechas clave
+    fechaRecorrido: {
+      type: Date,
+      default: null
+    },
+    fechaCita: {
+      type: Date,
+      default: null
+    },
+
+    // 🔗 Relaciones
+    seguimientoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Seguimiento',
+      required: true
+    },
+    propiedadId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Propiedad',
+      required: true
+    },
+
+    // 👤 Cliente
+    clienteEmail: {
+      type: String,
+      required: true,
+      lowercase: true
+    },
+    nombreCliente: {
+      type: String
+    },
+
+    // 👥 Agentes
+    agentePropiedadEmail: {
+      type: String,
+      required: true,
+      lowercase: true
+    },
+    agenteSeguimientoEmail: {
+      type: String,
+      required: true,
+      lowercase: true
+    },
+    asesorPropiedad: {
+      type: String // nombre del agente de la propiedad
+    },
+
+    // 🏠 Snapshot de la propiedad
+    clavePropiedad: {
+      type: String,
+      required: true
+    },
+    tipo: {
+      type: String,
+      required: true   // casa, departamento, terreno, etc
+    },
+    tipoOperacion: {
+      type: String, // venta | renta
+      required: true
+    },
+    direccion: {
+      type: String
+    },
+    imagen: {
+      type: String
+    },
+
+    // 💰 Negocio
+    comparteComision: {
+      type: Boolean,
+      default: false
+    },
+    comision: {
+      type: Number,
+      default: 0 // porcentaje final congelado
+    },
+
+    // 🧭 Estado del flujo
+    confirmado: {
+      type: Boolean,
+      default: false
+    },
+    elegida: {
+      type: Boolean,
+      default: false
+    },
+
+    // 📝 Extras
+    nota: {
+      type: String
+    }
   },
-  tipo: { type: String },
-  asesor: { type: String },
-  direccion: { type: String },
-  comision: { type: Number, default: 0 },
-  confirmado: { type: Boolean, default: false },
-  nota: { type: String },
-  elegida: { type: Boolean, default: false },
-  imagen: { type: String },
-  // 🔗 Asociaciones
-  seguimientoId: { type: mongoose.Schema.Types.ObjectId, ref: 'Seguimiento' },
-  propiedadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Propiedad' },
-  clienteEmail: String,
-  clavePropiedad: String, // ✅ NUEVO campo
-  nombreCliente: String, 
-  agenteEmail: String
-}, { timestamps: true });
+  {
+    timestamps: true
+  }
+);
 
 module.exports = mongoose.model('Recorrido', RecorridoSchema);

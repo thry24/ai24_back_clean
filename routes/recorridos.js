@@ -12,10 +12,16 @@ const { verifyToken } = require('../middlewares/authMiddleware');
 router.post('/solicitar', verifyToken, recorridoCtrl.solicitarRecorridos);
 
 // 2) Confirmar disponibilidad (solo dueño de la propiedad)
-router.patch('/:recorridoId/confirmar', verifyToken, recorridoCtrl.confirmarRecorrido);
+router.patch(
+  '/:recorridoId/confirmar',
+  verifyToken,
+  recorridoCtrl.confirmarRecorrido
+);
+
 
 // 3) Elegir recorrido (define propiedad final del seguimiento)
 router.patch('/:recorridoId/elegir', verifyToken, recorridoCtrl.elegirRecorrido);
+
 router.get(
   '/por-seguimiento/:seguimientoId',
   verifyToken,

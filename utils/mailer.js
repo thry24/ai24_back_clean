@@ -328,6 +328,63 @@ async function enviarRecorridoConfirmadoCliente({
   });
 }
 
+// ===============================
+// 📍 Compartir ubicación de cita
+// ===============================
+async function enviarUbicacionCita({
+  to,
+  clienteNombre,
+  propiedadDireccion,
+  linkMaps,
+  fecha,
+  hora
+}) {
+  const html = `
+    <h2>📍 Ubicación de tu cita</h2>
+
+    <p>Hola <b>${clienteNombre}</b>,</p>
+
+    <p>
+      Tu cita ha sido agendada con los siguientes detalles:
+    </p>
+
+    <p>
+      📅 <b>Fecha:</b> ${fecha}<br/>
+      ⏰ <b>Hora:</b> ${hora}<br/>
+      📍 <b>Dirección:</b> ${propiedadDireccion}
+    </p>
+
+    <p>
+      <a
+        href="${linkMaps}"
+        target="_blank"
+        style="
+          display:inline-block;
+          padding:12px 20px;
+          background:#16a34a;
+          color:#fff;
+          text-decoration:none;
+          border-radius:6px;
+          font-weight:bold;
+        "
+      >
+        👉 Ver ubicación en Google Maps
+      </a>
+    </p>
+
+    <br/>
+    <p>— Equipo Thry24</p>
+  `;
+
+  return resend.emails.send({
+    from: 'Thry24 <notificaciones@thry24.com>',
+    to: [to],
+    subject: '📍 Ubicación de tu cita',
+    html
+  });
+}
+
+
 module.exports = {
   enviarCredenciales,
   enviarSolicitudColaboracion,
@@ -337,5 +394,6 @@ module.exports = {
   enviarCartaFirmadaAgente,
   enviarRecuperacionPassword, 
   enviarSolicitudRecorrido,
-  enviarRecorridoConfirmadoCliente
+  enviarRecorridoConfirmadoCliente,
+  enviarUbicacionCita
 };

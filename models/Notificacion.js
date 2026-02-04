@@ -16,13 +16,18 @@ const NotificacionSchema = new mongoose.Schema(
 
     tipo: {
       type: String,
-      enum: ['contacto', 'mensaje', 'sistema', 'colaboracion', 'seguimiento'],
+      enum: ['contacto', 'mensaje', 'sistema', 'colaboracion', 'seguimiento', 'recorrido'],
       default: 'contacto',
     },
 
     referenciaId: {
       type: mongoose.Schema.Types.ObjectId,
       default: null,
+    },
+
+    meta: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {}
     },
 
     leido: {

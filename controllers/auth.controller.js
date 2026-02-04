@@ -95,15 +95,15 @@ exports.initRegister = async (req, res) => {
     rol,
     telefono,
     inmobiliaria,
-    firmaBase64,
+    // firmaBase64, ❌ ya no se pide en registro
     tipoCliente 
   } = req.body;
 
   const passwordRegex =
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$/;
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
 
   let imagenSubida = null;
-  let firmaSubida = null;
+  // let firmaSubida = null; ❌ firma deshabilitada temporalmente
 
   try {
     if (!nombre || !correo || !password || !rol) {
@@ -120,11 +120,11 @@ exports.initRegister = async (req, res) => {
       return res.status(400).json({ msg: "Rol inválido." });
     }
 
-if (!passwordRegex.test(password)) {
-  return res.status(400).json({
-    msg: "La contraseña debe tener al menos 8 caracteres, incluyendo mayúscula, minúscula y número.",
-  });
-}
+    if (!passwordRegex.test(password)) {
+      return res.status(400).json({
+        msg: "La contraseña debe tener al menos 8 caracteres, incluyendo mayúscula, minúscula y número.",
+      });
+    }
 
     const correoExistente = await User.findOne({ correo });
     if (correoExistente) {
@@ -151,6 +151,8 @@ if (!passwordRegex.test(password)) {
       imagenSubida = await subirAGoogleStorage(imagen.path, carpeta);
     }
 
+    /*
+    // ❌ FIRMA DESHABILITADA POR AHORA
     if (firmaBase64) {
       const firmaBuffer = Buffer.from(
         firmaBase64.replace(/^data:image\/\w+;base64,/, ""),
@@ -162,6 +164,8 @@ if (!passwordRegex.test(password)) {
         "ai24/firmas"
       );
     }
+    */
+
     if (rol === 'cliente') {
       const tiposValidos = ['comprador', 'propietario', 'arrendatario'];
       if (!tipoCliente || !tiposValidos.includes(tipoCliente)) {
@@ -170,8 +174,9 @@ if (!passwordRegex.test(password)) {
         });
       }
     }
+
     const urlImagen = imagenSubida?.url || undefined;
-    const urlFirma = firmaSubida?.url || undefined;
+    // const urlFirma = firmaSubida?.url || undefined;
 
     const inmobiliariaFinal =
       rol === "agente" && inmobiliaria && inmobiliaria !== "independiente"
@@ -187,20 +192,18 @@ if (!passwordRegex.test(password)) {
       telefono: telefono || null,
       fotoPerfil: rol === "agente" ? urlImagen : undefined,
       logo: rol === "inmobiliaria" ? urlImagen : undefined,
-      firmaDigital: urlFirma,
+      // firmaDigital: urlFirma, ❌ firma omitida
       inmobiliaria: inmobiliariaFinal,
       code: Math.floor(100000 + Math.random() * 900000).toString(),
       expiresAt: new Date(Date.now() + 10 * 60 * 1000),
     });
 
-    console.log("Documento a guardar:");
-    console.log(JSON.stringify(nuevoIntento, null, 2));
     await EmailVerification.deleteMany({ correo });
-
     await nuevoIntento.save();
     await sendVerificationCode({ nombre, email: correo });
 
     res.status(200).json({ msg: "Código enviado correctamente al correo." });
+
   } catch (error) {
     console.error("Error en init-register:", error);
 
@@ -208,9 +211,11 @@ if (!passwordRegex.test(password)) {
       await eliminarDeGoogleStorage(imagenSubida.public_id);
     }
 
+    /*
     if (firmaSubida?.public_id) {
       await eliminarDeGoogleStorage(firmaSubida.public_id);
     }
+    */
 
     res.status(500).json({ msg: "Error interno del servidor." });
   }
@@ -588,6 +593,7 @@ exports.actualizarTipoCliente = async (req, res) => {
     return res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
+
 exports.googleSignIn = async (req, res) => {
   try {
     const { idToken, rol, telefono, inmobiliaria } = req.body;

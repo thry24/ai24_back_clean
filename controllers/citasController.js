@@ -5,7 +5,12 @@ const Propiedad = require("../models/Propiedad");
 const Colaboracion = require('../models/Colaboracion');
 const Notificacion = require('../models/Notificacion');
 const { obtenerDiaSemana } = require('../utils/fechas');
+const Recorrido = require('../models/Recorrido');
 const { enviarCitaAgendada } = require('../utils/enviarCitaAgendada');
+const { crearNotificacion } = require('../utils/notificaciones');
+const {
+  enviarUbicacionCita
+} = require('../utils/mailer'); // ajusta la ruta
 
 // helper: compone Date real (UTC) con "YYYY-MM-DD" + "HH:mm"
 function parseFechaHora(fechaStr, horaStr) {
@@ -21,31 +26,40 @@ function parseFechaHora(fechaStr, horaStr) {
 exports.getHorasDisponibles = async (req, res) => {
   try {
     const { agenteEmail, fecha } = req.query;
+
     if (!agenteEmail || !fecha) {
-      return res.status(400).json({ msg: 'Faltan agenteEmail o fecha' });
+      return res.status(400).json({ msg: 'Faltan datos' });
     }
 
-    // agenda base 09:00 - 18:00 cada hora
-    const base = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
+    // 🛡️ VALIDACIÓN REAL
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      return res.status(400).json({
+        msg: 'Formato de fecha inválido, usa YYYY-MM-DD'
+      });
+    }
 
-    // citas del día para ese agente
     const start = new Date(`${fecha}T00:00:00.000Z`);
     const end   = new Date(`${fecha}T23:59:59.999Z`);
 
-    const ocupadas = await Cita.find({
+    const citas = await Cita.find({
       agenteEmail,
-      fecha: { $gte: start, $lte: end }
+      fecha: { $gte: start, $lte: end },
+      estado: { $ne: 'cancelada' }
     }).select('hora -_id');
 
-    const horasOcupadas = new Set(ocupadas.map(c => c.hora));
-    const libres = base.filter(h => !horasOcupadas.has(h));
+    const ocupadas = new Set(citas.map(c => c.hora));
 
-    return res.json({ horas: libres });
-  } catch (e) {
-    console.error('getHorasDisponibles error:', e);
+    const base = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
+    const libres = base.filter(h => !ocupadas.has(h));
+
+    res.json({ horas: libres });
+
+  } catch (err) {
+    console.error('getHorasDisponibles error:', err);
     res.status(500).json({ msg: 'Error obteniendo horas' });
   }
 };
+
 
 // GET /api/citas?agenteEmail=...
 exports.listarCitasPorAgente = async (req, res) => {
@@ -127,6 +141,132 @@ exports.crearCita = async (req, res) => {
   } catch (err) {
     console.error('❌ crearCita error:', err);
     return res.status(500).json({ msg: 'Error al crear cita' });
+  }
+};
+
+exports.crearCitaDesdeRecorrido = async (req, res) => {
+  try {
+    const { recorridoId, fecha, hora } = req.body;
+    const userEmail = (req.user.email || req.user.correo).toLowerCase();
+
+    if (!recorridoId || !fecha || !hora) {
+      return res.status(400).json({ msg: 'Datos incompletos' });
+    }
+
+    // 1️⃣ Recorrido
+    const recorrido = await Recorrido.findById(recorridoId);
+    if (!recorrido || !recorrido.confirmado) {
+      return res.status(400).json({ msg: 'Recorrido no confirmado' });
+    }
+
+    // 2️⃣ Propiedad
+    const propiedad = await Propiedad.findById(recorrido.propiedadId)
+      .populate('agente', 'correo nombre direccion');
+
+    if (!propiedad || !propiedad.agente) {
+      return res.status(404).json({ msg: 'Propiedad no encontrada' });
+    }
+
+    const emailAgentePropiedad = propiedad.agente.correo.toLowerCase();
+
+    // 🔐 Solo agente dueño de la propiedad
+    if (emailAgentePropiedad !== userEmail) {
+      return res.status(403).json({ msg: 'No autorizado' });
+    }
+
+    // 3️⃣ Evitar duplicado
+    const yaExiste = await Cita.findOne({ recorridoId });
+    if (yaExiste) {
+      return res.status(409).json({ msg: 'La cita ya fue creada' });
+    }
+
+    // 4️⃣ Seguimiento
+    const seguimiento = await Seguimiento.findById(recorrido.seguimientoId);
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    // 🔥 Fecha real de la cita
+    const fechaCita = new Date(`${fecha}T${hora}:00`);
+
+    // ====================================================
+    // 📍 DIRECCIÓN FINAL (BLINDADA)
+    // ====================================================
+    let direccionFinal = recorrido.direccion;
+
+    // Fallback a propiedad si viene vacía
+    if (!direccionFinal || direccionFinal.trim() === '') {
+      if (propiedad.direccion) {
+        direccionFinal = [
+          propiedad.direccion.calle,
+          propiedad.direccion.colonia,
+          propiedad.direccion.municipio,
+          propiedad.direccion.estado
+        ]
+          .filter(Boolean)
+          .join(', ');
+      }
+    }
+
+    // 🚨 Si aún no hay dirección, no creamos la cita
+    if (!direccionFinal || direccionFinal.trim() === '') {
+      return res.status(400).json({
+        msg: 'No se puede crear la cita: la propiedad no tiene dirección válida'
+      });
+    }
+
+    // 5️⃣ Crear cita
+    const cita = await Cita.create({
+      recorridoId,
+      seguimientoId: seguimiento._id,
+      propiedadId: propiedad._id,
+
+      agenteEmail: emailAgentePropiedad,
+      agenteNombre: propiedad.agente.nombre,
+
+      clienteEmail: recorrido.clienteEmail,
+      clienteNombre: recorrido.nombreCliente,
+
+      propiedadClave: propiedad.clave,
+      propiedadDireccion: direccionFinal, // ✅ SIEMPRE llena
+      tipoOperacion: seguimiento.tipoOperacion,
+      tipoCliente: seguimiento.tipoCliente,
+
+      fecha: fechaCita,
+      hora
+    });
+
+    // 6️⃣ Actualizar recorrido
+    recorrido.fechaCita = fechaCita;
+    await recorrido.save();
+
+
+    // 7️⃣ Actualizar seguimiento
+    seguimiento.fechaCita = fechaCita;
+    seguimiento.estatus = 'Cita programada';
+    await seguimiento.save();
+
+    // 8️⃣ Notificaciones
+    await Promise.all([
+      Notificacion.create({
+        usuarioEmail: seguimiento.agenteEmail,
+        tipo: 'seguimiento',
+        mensaje: `Cita programada para ${propiedad.clave}`,
+        referenciaId: cita._id
+      }),
+      Notificacion.create({
+        usuarioEmail: seguimiento.clienteEmail,
+        tipo: 'seguimiento',
+        mensaje: `Tu cita para ${propiedad.clave} fue agendada`,
+        referenciaId: cita._id
+      })
+    ]);
+
+    res.json({ ok: true, cita });
+
+  } catch (err) {
+    console.error('❌ crearCitaDesdeRecorrido', err);
+    res.status(500).json({ msg: 'Error al crear cita' });
   }
 };
 
@@ -284,36 +424,32 @@ exports.crearCitaConValidacion = async (req, res) => {
 exports.confirmarCita = async (req, res) => {
   try {
     const { id } = req.params;
-    const user = req.user;
+    const userEmail = (req.user.email || req.user.correo).toLowerCase();
 
     const cita = await Cita.findById(id);
     if (!cita) return res.status(404).json({ msg: 'Cita no encontrada' });
 
-    if (cita.agenteEmail !== user.email && cita.agenteEmail !== user.correo) {
+    if (cita.agenteEmail !== userEmail) {
       return res.status(403).json({ msg: 'No autorizado' });
     }
 
     cita.estado = 'confirmada';
     await cita.save();
 
-    await Seguimiento.findByIdAndUpdate(cita.seguimientoId, {
-      fechaRecorrido: cita.fecha,
-      estatus: 'Recorrido programado',
-    });
-
     await Notificacion.create({
       usuarioEmail: cita.clienteEmail,
-      mensaje: `Tu cita para la propiedad ${cita.propiedadClave} ha sido confirmada`,
-      tipo: 'contacto',
-      referenciaId: cita._id,
+      tipo: 'seguimiento',
+      mensaje: `Tu cita para ${cita.propiedadClave} fue confirmada`,
+      referenciaId: cita._id
     });
 
     res.json({ ok: true, cita });
   } catch (err) {
-    console.error(err);
+    console.error('❌ confirmarCita', err);
     res.status(500).json({ msg: 'Error al confirmar cita' });
   }
 };
+
 
 exports.obtenerHorasDisponibles = async (req, res) => {
   try {
@@ -502,5 +638,76 @@ exports.crearCitaNotaria = async (req, res) => {
   } catch (err) {
     console.error('❌ crearCitaNotaria', err);
     res.status(500).json({ msg: 'Error al crear cita de notaría' });
+  }
+};
+exports.compartirUbicacion = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const userEmail =
+      (req.user?.email || req.user?.correo || '').toLowerCase();
+
+    const cita = await Cita.findById(id);
+
+    if (!cita) {
+      return res.status(404).json({ msg: 'Cita no encontrada' });
+    }
+
+    // 🔐 Solo el asesor dueño de la propiedad
+    if (cita.agenteEmail.toLowerCase() !== userEmail) {
+      return res.status(403).json({ msg: 'Sin permiso para esta acción' });
+    }
+
+    if (!cita.propiedadDireccion) {
+      return res
+        .status(400)
+        .json({ msg: 'La cita no tiene dirección registrada' });
+    }
+
+    // 📍 Google Maps (dirección exacta)
+    const urlMaps =
+      'https://www.google.com/maps/search/?api=1&query=' +
+      encodeURIComponent(cita.propiedadDireccion);
+
+    // 📨 Mensaje al cliente
+    const mensaje = `
+📍 Ubicación de tu cita
+
+🏠 Propiedad: ${cita.propiedadClave}
+📅 Fecha: ${new Date(cita.fecha).toLocaleDateString('es-MX')}
+⏰ Hora: ${cita.hora}
+
+👉 ${urlMaps}
+`;
+
+    // 📩 CORREO
+    await enviarUbicacionCita({
+      to: cita.clienteEmail,
+      clienteNombre: cita.clienteNombre,
+      propiedadDireccion: cita.propiedadDireccion,
+      urlMaps,
+      fecha: cita.fecha,
+      hora: cita.hora
+    });
+
+
+    // 🔔 NOTIFICACIÓN INTERNA
+    await crearNotificacion({
+      usuarioEmail: cita.clienteEmail,
+      tipo: 'cita',
+      referenciaId: cita._id,
+      mensaje: 'Te compartimos la ubicación de tu cita 📍',
+      meta: { urlMaps }
+    });
+
+    res.json({
+      ok: true,
+      msg: 'Ubicación enviada correctamente',
+      urlMaps
+    });
+
+  } catch (err) {
+    console.error('❌ Error compartiendo ubicación:', err);
+    res.status(500).json({ msg: 'Error al compartir ubicación' });
   }
 };

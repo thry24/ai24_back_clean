@@ -1,6 +1,9 @@
 const Recorrido = require('../models/Recorrido');
 const Seguimiento = require('../models/Seguimiento');
 const Propiedad = require('../models/Propiedad');
+const Colaboracion = require('../models/Colaboracion');
+const User = require('../models/User');
+const Notificacion = require('../models/Notificacion');
 const { crearNotificacion } = require('../utils/notificaciones');
 const {
   enviarSolicitudRecorrido,
@@ -44,26 +47,31 @@ exports.crear = async (req, res) => {
 ========================= */
 exports.obtenerPorAgente = async (req, res) => {
   try {
-    const email = (req.params.email || '').toLowerCase();
+    const email = req.params.email.toLowerCase();
 
-    if (!email) {
-      return res.status(400).json({ ok: false, message: 'Falta el email del agente' });
-    }
+    const recorridos = await Recorrido.find({
+      $or: [
+        { agenteEmail: email }, // dueño de la propiedad
+        { clienteEmail: { $exists: true } } // luego filtramos por seguimiento
+      ]
+    })
+      .populate('seguimientoId', 'agenteEmail clienteNombre')
+      .populate('propiedadId', 'clave imagenPrincipal')
+      .lean();
 
-    const recorridos = await Recorrido.find({ agenteEmail: email })
-      .populate('propiedadId', 'clave tipoPropiedad direccion')
-      .populate('seguimientoId', 'clienteNombre clienteEmail tipoOperacion estatus')
-      .sort({ fecha: -1 });
+    // 🔥 Filtrar los que realmente le corresponden
+    const visibles = recorridos.filter(r =>
+      r.agenteEmail === email ||
+      r.seguimientoId?.agenteEmail?.toLowerCase() === email
+    );
 
-    res.json(recorridos);
+    res.json(visibles);
   } catch (err) {
-    console.error('❌ Error al obtener recorridos:', err);
-    res.status(500).json({
-      ok: false,
-      message: 'Error al obtener recorridos',
-    });
+    console.error(err);
+    res.status(500).json({ msg: 'Error obteniendo recorridos' });
   }
 };
+
 
 /* =========================
    📌 ELIMINAR RECORRIDO
@@ -122,52 +130,77 @@ exports.solicitarRecorridos = async (req, res) => {
       const yaExiste = await Recorrido.findOne({ seguimientoId, propiedadId });
       if (yaExiste) continue;
 
-const propiedad = await Propiedad
-  .findById(propiedadId)
-  .populate('agente', 'correo email nombre');
+      const propiedad = await Propiedad
+        .findById(propiedadId)
+        .populate('agente', 'correo email nombre');
 
-if (!propiedad) continue;
+      if (!propiedad || !propiedad.agente) continue;
 
-const agentePropiedadEmail = (
-  propiedad.agente?.correo ||
-  propiedad.agente?.email ||
-  propiedad.agenteEmail ||
-  ''
-).toLowerCase();
+      const agentePropiedadEmail =
+        (propiedad.agente.correo || propiedad.agente.email || '').toLowerCase();
 
-if (!agentePropiedadEmail) {
-  console.error('❌ Propiedad sin email de agente:', propiedadId);
-  continue;
-}
+      if (!agentePropiedadEmail) continue;
 
+      const tipoOperacion = seguimiento.tipoOperacion.toLowerCase();
 
-      // ✅ CREAR RECORRIDO
+      let porcentajeComision = 0;
+
+      if (propiedad.comision?.comparte) {
+        if (tipoOperacion === 'venta') {
+          porcentajeComision =
+            propiedad.comision.venta ??
+            propiedad.comision.porcentaje ??
+            0;
+        } else if (tipoOperacion === 'renta') {
+          porcentajeComision =
+            propiedad.comision.renta ??
+            propiedad.comision.porcentaje ??
+            0;
+        }
+      }
+
       const recorrido = await Recorrido.create({
         seguimientoId,
         propiedadId,
+
         clienteEmail: seguimiento.clienteEmail,
         nombreCliente: seguimiento.clienteNombre,
-        agenteEmail: agentePropiedadEmail,
+
+        agentePropiedadEmail,
+        agenteSeguimientoEmail,
+        asesor: propiedad.agente.nombre,
+
         clavePropiedad: propiedad.clave,
-        direccion: propiedad.direccion
-          ? `${propiedad.direccion.colonia}, ${propiedad.direccion.municipio}, ${propiedad.direccion.estado}`
-          : '',
+        tipo: propiedad.tipoPropiedad,
+        tipoOperacion,
+
+        direccion: [
+          propiedad.direccion?.calle,
+          propiedad.direccion?.colonia,
+          propiedad.direccion?.municipio,
+          propiedad.direccion?.estado
+        ].filter(Boolean).join(', '),
+
         imagen: propiedad.imagenPrincipal,
+
+        comparteComision: propiedad.comision?.comparte || false,
+        comision: porcentajeComision,
+
         confirmado: false,
         elegida: false
       });
 
-      // 🔔 NOTIFICACIÓN INTERNA
+
+      // 🔔 Notificación al agente de la propiedad
       await crearNotificacion({
         usuarioEmail: agentePropiedadEmail,
-        tipo: 'seguimiento',
+        tipo: 'recorrido',
         referenciaId: recorrido._id,
-        mensaje: `Tienes una solicitud de recorrido para la propiedad ${propiedad.clave}`
+        mensaje: `Solicitud de recorrido para ${propiedad.clave}`,
+        meta: { accion: 'confirmar_recorrido' }
       });
 
-      console.log('🔔 Notificación creada para:', agentePropiedadEmail);
-
-      // 📩 CORREO (solo si no es el agente del seguimiento)
+      // 📩 Correo (si no es el agente del seguimiento)
       if (agentePropiedadEmail !== agenteSeguimientoEmail) {
         await enviarSolicitudRecorrido({
           to: agentePropiedadEmail,
@@ -176,11 +209,9 @@ if (!agentePropiedadEmail) {
           propiedadClave: propiedad.clave,
           imagenPropiedad: propiedad.imagenPrincipal
         });
-
-        console.log('📩 Correo enviado a:', agentePropiedadEmail);
       }
 
-      // 🔔 NOTIFICACIÓN AL CLIENTE
+      // 🔔 Notificación al cliente
       await crearNotificacion({
         usuarioEmail: clienteEmail,
         tipo: 'seguimiento',
@@ -209,66 +240,136 @@ if (!agentePropiedadEmail) {
 exports.confirmarRecorrido = async (req, res) => {
   try {
     const { recorridoId } = req.params;
-    const { nota } = req.body;
-    const userEmail = req.user.email || req.user.correo;
+    const userEmail = (req.user.correo || req.user.email || '').toLowerCase();
 
+    // 1️⃣ Recorrido
     const recorrido = await Recorrido.findById(recorridoId);
     if (!recorrido) {
       return res.status(404).json({ msg: 'Recorrido no encontrado' });
     }
 
-    if (recorrido.confirmado) {
-      return res.status(400).json({ msg: 'El recorrido ya está confirmado' });
+    // 2️⃣ Propiedad
+    const propiedad = await Propiedad
+      .findById(recorrido.propiedadId)
+      .populate('agente', 'nombre correo email');
+
+    if (!propiedad || !propiedad.agente) {
+      return res.status(400).json({ msg: 'Propiedad sin agente asignado' });
     }
 
-    if (userEmail !== recorrido.agenteEmail) {
+    const emailAgentePropiedad =
+      (propiedad.agente.correo || propiedad.agente.email || '').toLowerCase();
+
+    // 🔐 Solo el dueño de la propiedad puede aceptar
+    if (emailAgentePropiedad !== userEmail) {
       return res.status(403).json({ msg: 'No tienes permiso para confirmar este recorrido' });
     }
 
-    recorrido.confirmado = true;
-    recorrido.nota = nota || recorrido.nota;
-    await recorrido.save();
-
-    const seguimiento = await Seguimiento.findById(recorrido.seguimientoId);
-
-    if (seguimiento && !seguimiento.fechaRecorrido) {
-      seguimiento.fechaRecorrido = new Date();
-      seguimiento.estatus = 'Recorrido confirmado';
-      await seguimiento.save();
-    }
-
-    // 🔔 Cliente
-    await crearNotificacion({
-      usuarioEmail: recorrido.clienteEmail,
-      tipo: 'seguimiento',
-      referenciaId: recorrido._id,
-      mensaje: `Tu recorrido para la propiedad ${recorrido.clavePropiedad} fue confirmado`
-    });
-
-    // 🔔 Agente del seguimiento
-    if (seguimiento && seguimiento.agenteEmail !== recorrido.agenteEmail) {
-      await crearNotificacion({
-        usuarioEmail: seguimiento.agenteEmail,
-        tipo: 'seguimiento',
-        referenciaId: recorrido._id,
-        mensaje: `El recorrido de ${recorrido.clavePropiedad} fue confirmado`
+    if (recorrido.confirmado) {
+      return res.status(400).json({
+        msg: 'Este recorrido ya fue confirmado'
       });
     }
 
-    // 📩 Correo cliente
-    await enviarRecorridoConfirmadoCliente({
-      to: recorrido.clienteEmail,
-      clienteNombre: seguimiento?.clienteNombre || 'Cliente',
-      propiedadClave: recorrido.clavePropiedad
+    // 3️⃣ Confirmar recorrido
+    recorrido.confirmado = true;
+    await recorrido.save();
+
+    await Notificacion.updateMany(
+      {
+        referenciaId: recorrido._id,
+        tipo: 'recorrido_solicitado',
+        usuarioEmail: userEmail
+      },
+      { $set: { leida: true } }
+    );
+
+    // 4️⃣ Seguimiento
+    const seguimiento = await Seguimiento.findById(recorrido.seguimientoId);
+    if (!seguimiento) {
+      return res.status(404).json({ msg: 'Seguimiento no encontrado' });
+    }
+
+    // 5️⃣ Agente principal (el que trae al cliente)
+    const agentePrincipal = await User.findOne({
+      correo: seguimiento.agenteEmail.toLowerCase()
     });
 
-    res.json({ ok: true, msg: 'Recorrido confirmado correctamente' });
+    // 6️⃣ CREAR COLABORACIÓN SOLO SI NO ES TU PROPIEDAD
+    if (emailAgentePropiedad !== seguimiento.agenteEmail.toLowerCase()) {
+      const existe = await Colaboracion.findOne({
+        seguimiento: seguimiento._id,
+        propiedad: propiedad._id
+      });
+
+      if (!existe) {
+        await Colaboracion.create({
+          agentePrincipal: agentePrincipal._id,
+          nombreAgente: agentePrincipal.nombre,
+          agenteEmail: agentePrincipal.correo,
+
+          colaborador: propiedad.agente._id,
+          nombreColaborador: propiedad.agente.nombre,
+          colaboradorEmail: emailAgentePropiedad,
+
+          tipoColaboracion: 'externo',
+
+          propiedad: propiedad._id,
+          nombrePropiedad: propiedad.clave,
+          imagenPropiedad: propiedad.imagenPrincipal,
+
+          tipoOperacion: seguimiento.tipoOperacion,
+          comision: propiedad.comision?.porcentaje || 0,
+
+          seguimientoActivo: true,
+          seguimiento: seguimiento._id,
+
+          estado: 'aceptada'
+        });
+      }
+    }
+
+    // 7️⃣ Notificaciones
+
+    // 🔔 Agente principal
+    await Notificacion.create({
+      usuarioEmail: seguimiento.agenteEmail,
+      mensaje: `El recorrido para la propiedad ${propiedad.clave} fue aceptado`,
+      tipo: 'seguimiento',
+      referenciaId: recorrido._id
+    });
+
+    // 🔔 Cliente
+    await Notificacion.create({
+      usuarioEmail: seguimiento.clienteEmail,
+      mensaje: `Tu recorrido para ${propiedad.clave} fue confirmado`,
+      tipo: 'seguimiento',
+      referenciaId: recorrido._id
+    });
+
+    // 🔔 Agente colaborador
+    await Notificacion.create({
+      usuarioEmail: emailAgentePropiedad,
+      mensaje: `Confirmaste un recorrido para la propiedad ${propiedad.clave}`,
+      tipo: 'seguimiento',
+      referenciaId: recorrido._id
+    });
+
+    // 8️⃣ Seguimiento status
+    seguimiento.estatus = 'RECORRIDO_CONFIRMADO';
+    await seguimiento.save();
+
+    return res.json({
+      ok: true,
+      message: 'Recorrido confirmado y colaboración creada correctamente'
+    });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: 'Error confirmando recorrido' });
+    console.error('❌ confirmarRecorrido:', err);
+    return res.status(500).json({ msg: 'Error al confirmar recorrido' });
   }
 };
+
 exports.elegirRecorrido = async (req, res) => {
   try {
     const { recorridoId } = req.params;
@@ -356,10 +457,59 @@ exports.obtenerPorSeguimiento = async (req, res) => {
     const { seguimientoId } = req.params;
 
     const recorridos = await Recorrido.find({ seguimientoId })
-      .populate('propiedadId')
+      .populate({
+        path: 'propiedadId',
+        populate: {
+          path: 'agente',
+          select: 'nombre correo'
+        }
+      })
       .sort({ createdAt: -1 });
 
-    res.json(recorridos);
+    const seguimiento = await Seguimiento.findById(seguimientoId);
+
+    const citas = await Cita.find({ seguimientoId });
+
+    const recorridosFinal = recorridos.map(r => {
+      const cita = citas.find(c => c.recorridoId.toString() === r._id.toString());
+
+      return {
+        _id: r._id,
+        confirmado: r.confirmado,
+        elegida: r.elegida,
+        nota: r.nota,
+
+        nombreCliente: r.nombreCliente,
+
+        // 👇 VIENEN DE PROPIEDAD
+        tipo: seguimiento.tipoOperacion,
+        comision:
+          typeof r.propiedadId?.comision === 'object'
+            ? r.propiedadId.comision.porcentaje || 0
+            : r.propiedadId?.comision || 0,
+
+        asesor: r.propiedadId?.agente?.nombre || r.propiedadId?.agente?.correo,
+
+        direccion: [
+          r.propiedadId?.direccion?.calle,
+          r.propiedadId?.direccion?.colonia,
+          r.propiedadId?.direccion?.municipio,
+          r.propiedadId?.direccion?.estado
+        ].filter(Boolean).join(', '),
+
+        clavePropiedad: r.propiedadId?.clave,
+        imagen: r.propiedadId?.imagenPrincipal,
+
+        // 👇 CLAVE
+        fechaCita: cita?.fecha || null,
+        tieneCita: !!cita,
+
+        agenteEmail: r.propiedadId?.agente?.correo,
+        seguimientoId
+      };
+    });
+
+    res.json(recorridosFinal);
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: 'Error obteniendo recorridos' });

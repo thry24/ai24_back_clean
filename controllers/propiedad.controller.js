@@ -178,7 +178,14 @@ exports.generarFichaPDF = async (req, res) => {
 
     const docDefinition = {
       content: [
-        { text: `Ficha de la propiedad: ${propiedad.clave}`, style: "header" },
+        { text: propiedad.titulo || "Propiedad sin título",
+            style: "titulo"
+          },
+          {
+            text: `Clave: ${propiedad.clave || propiedad._id} · ${propiedad.tipoOperacion || ""}`,
+            style: "subheader"
+          },
+
         { text: `Agente: ${propiedad.agente?.nombre || "N/A"}`, margin: [0, 0, 0, 10] },
         {
           columns: [
@@ -189,9 +196,23 @@ exports.generarFichaPDF = async (req, res) => {
         { text: `Descripción: ${propiedad.descripcion || "N/A"}`, margin: [0, 10] },
         { text: `Precio: $${(propiedad.precio || 0).toLocaleString("es-MX")}`, bold: true },
       ],
-      styles: {
-        header: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] },
-      },
+        styles: {
+          titulo: {
+            fontSize: 20,
+            bold: true,
+            margin: [0, 0, 0, 4]
+          },
+          subheader: {
+            fontSize: 11,
+            color: "#555",
+            margin: [0, 0, 0, 10]
+          },
+          header: {
+            fontSize: 18,
+            bold: true,
+            margin: [0, 0, 0, 10]
+          }
+        },
     };
 
     const pdfBuffer = await new Promise((resolve, reject) => {
@@ -240,6 +261,7 @@ exports.agregarPropiedad = async (req, res) => {
     console.log('📥 Datos recibidos:', parsedData);
 
     const {
+      titulo,
       tipoOperacion,
       tipoPropiedad,
       descripcion,
@@ -262,6 +284,12 @@ exports.agregarPropiedad = async (req, res) => {
 
     // 3️⃣ 🔥 LIMPIEZA OBLIGATORIA CASA / DEPARTAMENTO (ANTES DE CREAR EL DOCUMENTO)
     if (caracteristicas?.casaDepto) {
+
+      if (!titulo) {
+        return res.status(400).json({
+          msg: "El título de la propiedad es obligatorio."
+        });
+      }
 
       if (tipoPropiedad === "casa") {
         console.log('🧹 Limpieza: eliminando departamento (es CASA)');
@@ -298,6 +326,7 @@ if (rol === "agente") {
 }
 
 const propiedad = new Propiedad({
+  titulo, 
   tipoOperacion,
   tipoPropiedad,
   precio,

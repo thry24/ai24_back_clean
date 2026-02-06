@@ -10,7 +10,6 @@ const bcrypt = require("bcryptjs");
 
 const {
   subirAGoogleStorage,
-  subirBufferAGoogleStorage,
   eliminarDeGoogleStorage,
 } = require("../utils/uploadToGCS");
 const Cita = require("../models/Cita");

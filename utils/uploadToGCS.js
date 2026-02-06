@@ -1,10 +1,8 @@
 const { Storage } = require("@google-cloud/storage");
 const path = require("path");
 const { v4: uuidv4 } = require("uuid");
-const fs = require("fs");
 require("dotenv").config();
 
-// Construir credenciales desde variables de entorno GCLOUD_*
 function getServiceAccountFromEnv() {
   const required = [
     "GCLOUD_PROJECT_ID",
@@ -33,7 +31,6 @@ function getServiceAccountFromEnv() {
   };
 }
 
-// Inicializar Google Cloud Storage
 let bucket = null;
 
 try {
@@ -52,36 +49,35 @@ try {
 
 function ensureBucket() {
   if (!bucket) {
-    throw new Error(
-      "Bucket no inicializado. Revisa credenciales GCLOUD_* y dotenv."
-    );
+    throw new Error("Bucket no inicializado.");
   }
 }
 
-// Subir archivo desde ruta local
+/* =========================================
+   SUBIR DESDE FILE
+========================================= */
 async function subirAGoogleStorage(filePath, folder = "uploads") {
   ensureBucket();
 
   const fileName = path.basename(filePath);
   const destination = `${folder}/${Date.now()}_${fileName}`;
-  const fileUpload = bucket.file(destination);
 
   await bucket.upload(filePath, {
     destination,
     resumable: false,
-    metadata: { contentType: "auto" },
   });
 
-  // Generar signed URL en lugar de makePublic
-  const [url] = await fileUpload.getSignedUrl({
-    action: "read",
-    expires: Date.now() + 1000 * 60 * 60, // 1 hora de validez
-  });
+  const publicUrl = `https://storage.googleapis.com/${process.env.GCLOUD_BUCKET_NAME}/${destination}`;
 
-  return { url, public_id: destination };
+  return {
+    url: publicUrl,
+    public_id: destination,
+  };
 }
 
-// Subir archivo desde Buffer
+/* =========================================
+   SUBIR DESDE BUFFER
+========================================= */
 async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
   ensureBucket();
 
@@ -94,20 +90,21 @@ async function subirBufferAGoogleStorage(buffer, filename, folder = "uploads") {
     contentType: "image/png",
   });
 
-  const [url] = await file.getSignedUrl({
-    action: "read",
-    expires: Date.now() + 1000 * 60 * 60, // 1 hora
-  });
+  const publicUrl = `https://storage.googleapis.com/${process.env.GCLOUD_BUCKET_NAME}/${uniqueName}`;
 
-  return { url, public_id: uniqueName };
+  return {
+    url: publicUrl,
+    public_id: uniqueName,
+  };
 }
 
-// Eliminar archivo del bucket
+/* =========================================
+   ELIMINAR
+========================================= */
 async function eliminarDeGoogleStorage(publicId) {
   ensureBucket();
   const file = bucket.file(publicId);
   await file.delete();
-  console.log(`✔ Archivo eliminado: ${publicId}`);
 }
 
 module.exports = {

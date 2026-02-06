@@ -93,6 +93,7 @@ UserSchema.pre("save", function (next) {
   if (this.rol !== "cliente") {
     this.tipoCliente = null;
   }
+});
 
   UserSchema.pre("save", function (next) {
     // 🚫 Si no es cliente, eliminamos tipoCliente

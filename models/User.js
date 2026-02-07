@@ -105,7 +105,15 @@ UserSchema.pre("save", function (next) {
   if (this.rol !== "cliente") {
     this.tipoCliente = null;
   }
-  next();
 });
+
+  UserSchema.pre("save", function (next) {
+    // 🚫 Si no es cliente, eliminamos tipoCliente
+    if (this.rol !== "cliente") {
+      this.tipoCliente = null;
+    }
+
+    next();
+  });
 
 module.exports = mongoose.model("User", UserSchema);

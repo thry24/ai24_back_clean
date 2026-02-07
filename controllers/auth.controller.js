@@ -440,25 +440,39 @@ exports.actualizarLogo = async (req, res) => {
     if (!usuario)
       return res.status(404).json({ msg: "Usuario no encontrado." });
 
-    if (usuario.rol !== "inmobiliaria") {
+    if (!["inmobiliaria", "agente"].includes(usuario.rol)) {
       return res
         .status(403)
-        .json({ msg: "Solo inmobiliarias pueden tener logo." });
+        .json({ msg: "Solo agentes o inmobiliarias pueden tener logo." });
     }
 
     if (!req.file) {
       return res.status(400).json({ msg: "No se proporcionó ninguna imagen." });
     }
 
+    // eliminar logo anterior
+    if (usuario.logo) {
+      try {
+        const publicId = usuario.logo.split(".com/")[1];
+        if (publicId) await eliminarDeGoogleStorage(publicId);
+      } catch (e) {
+        console.warn("No se pudo borrar logo anterior");
+      }
+    }
+
     const nuevaImagen = await subirAGoogleStorage(
       req.file.path,
-      "ai24/inmobiliarias"
+      "ai24/logos"
     );
 
     usuario.logo = nuevaImagen.url;
     await usuario.save();
 
-    res.status(200).json({ msg: "Logo actualizado.", logo: nuevaImagen.url });
+    res.status(200).json({
+      msg: "Logo actualizado.",
+      logo: nuevaImagen.url
+    });
+
   } catch (error) {
     console.error("Error al actualizar logo:", error);
     res.status(500).json({ msg: "Error al actualizar el logo." });

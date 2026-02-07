@@ -40,7 +40,15 @@ const UserSchema = new mongoose.Schema(
     googleId: { type: String, index: true, sparse: true },
     picture: String,
     logo: String,
-
+    
+    marcaAgua: {
+      url: String,
+      public_id: String
+    },
+    usarMarcaAgua: {
+      type: Boolean,
+      default: true
+    },
     inmobiliaria: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Inmobiliaria",

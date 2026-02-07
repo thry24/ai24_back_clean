@@ -8,6 +8,7 @@ const upload = require("../middlewares/upload.middleware");
 const { verifyToken } = require("../middlewares/authMiddleware");
 const authController = require("../controllers/auth.controller");
 const User = require("../models/User");
+const uploadLogo = require("../middlewares/uploadLogo.middleware");
 
 router.get("/users", verifyToken, register.listUsers);
 router.get("/me", verifyToken, register.getUsuarioActual);
@@ -32,14 +33,18 @@ router.put(
   upload,
   register.actualizarFotoPerfil
 );
+
 router.put(
   "/actualizar-logo",
   verifyToken,
-  upload,
+  uploadLogo,
   register.actualizarLogo
 );
 
+
+
 router.post('/google', register.googleSignIn);
+
 
 
 router.post('/recuperar-password', async (req, res) => {

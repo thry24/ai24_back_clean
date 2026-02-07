@@ -1,7 +1,10 @@
 const { Storage } = require("@google-cloud/storage");
 const path = require("path");
+const { aplicarMarcaAgua } = require("../utils/watermark");
+
 const { v4: uuidv4 } = require("uuid");
 require("dotenv").config();
+
 
 function getServiceAccountFromEnv() {
   const required = [

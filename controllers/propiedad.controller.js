@@ -11,14 +11,17 @@ const Lead = require('../models/Lead');
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
+const { aplicarMarcaAgua } = require("../utils/watermark");
+
 const { crearSeguimientoSiNoExiste } = require('./seguimientos.helper');
 
 const { Storage } = require("@google-cloud/storage");
 const PdfPrinter = require("pdfmake");
-const {
+const { 
   subirAGoogleStorage,
-  eliminarDeGoogleStorage,
+  subirBufferAGoogleStorage
 } = require("../utils/uploadToGCS");
+
 const sendPropertyPdfEmail = require('../utils/sendPropertyPdfEmail');
 const Mensaje = require('../models/Mensaje');
 const { hashParticipants } = require('../utils/chatHash')
@@ -151,6 +154,54 @@ exports.listadoPropiedadesInmobiliaria = async (req, res) => {
   }
 };
 
+function imagenConMarcaAgua(imagenBase64, watermarkBase64) {
+  if (!watermarkBase64) {
+    return {
+      image: imagenBase64,
+      fit: [420, 260],
+      alignment: "center",
+      margin: [0, 10]
+    };
+  }
+
+  return {
+    stack: [
+      {
+        image: imagenBase64,
+        fit: [420, 260],
+        alignment: "center"
+      },
+      {
+        image: watermarkBase64,
+        width: 80,
+        opacity: 0.5,
+        absolutePosition: { x: 430, y: 210 }
+      }
+    ],
+    margin: [0, 10]
+  };
+}
+
+function construirGaleria(imagenes) {
+  const filas = [];
+
+  for (let i = 0; i < imagenes.length; i += 2) {
+    filas.push([
+      imagenes[i] || {},
+      imagenes[i + 1] || {}
+    ]);
+  }
+
+  return {
+    table: {
+      widths: ["50%", "50%"],
+      body: filas
+    },
+    layout: "noBorders"
+  };
+}
+
+
 
 exports.generarFichaPDF = async (req, res) => {
   try {
@@ -175,45 +226,83 @@ exports.generarFichaPDF = async (req, res) => {
 
     const logo = await getImageBase64(propiedad.agente?.fotoPerfil || propiedad.agente?.logo);
     const imagenPrincipal = await getImageBase64(propiedad.imagenPrincipal);
+    // Obtener watermark
+    const watermarkUrl =
+      propiedad.marcaAguaPersonalizada?.url ||
+      propiedad.agente?.marcaAgua?.url ||
+      null;
+
+    const watermarkBase64 = watermarkUrl
+      ? await getImageBase64(watermarkUrl)
+      : null;
+
+
+    // 🔥 Procesar todas las imágenes
+    const imagenesProcesadas = [];
+
+    for (const img of propiedad.imagenes || []) {
+      const base64 = await getImageBase64(img);
+      if (base64) {
+        imagenesProcesadas.push(
+          imagenConMarcaAgua(base64, watermarkBase64)
+        );
+      }
+    }
 
     const docDefinition = {
       content: [
-        { text: propiedad.titulo || "Propiedad sin título",
-            style: "titulo"
-          },
-          {
-            text: `Clave: ${propiedad.clave || propiedad._id} · ${propiedad.tipoOperacion || ""}`,
-            style: "subheader"
-          },
+        { 
+          text: propiedad.titulo || "Propiedad sin título",
+          style: "titulo"
+        },
+        {
+          text: `Clave: ${propiedad.clave || propiedad._id} · ${propiedad.tipoOperacion || ""}`,
+          style: "subheader"
+        },
 
-        { text: `Agente: ${propiedad.agente?.nombre || "N/A"}`, margin: [0, 0, 0, 10] },
+        { 
+          text: `Agente: ${propiedad.agente?.nombre || "N/A"}`, 
+          margin: [0, 0, 0, 10] 
+        },
+
         {
           columns: [
             logo ? { image: logo, width: 80 } : {},
-            imagenPrincipal ? { image: imagenPrincipal, width: 250 } : {},
+            imagenPrincipal
+              ? {
+  stack: [
+    imagenConMarcaAgua(imagenPrincipal, watermarkBase64)
+  ],
+  margin: [0, 0, 0, 10]
+}
+
+              : {},
           ],
         },
+
         { text: `Descripción: ${propiedad.descripcion || "N/A"}`, margin: [0, 10] },
         { text: `Precio: $${(propiedad.precio || 0).toLocaleString("es-MX")}`, bold: true },
+
+        // 🔥 AQUÍ VA LA GALERÍA
+        { text: "Galería de imágenes", margin: [0, 20, 0, 10], bold: true },
+
+        construirGaleria(imagenesProcesadas)
       ],
-        styles: {
-          titulo: {
-            fontSize: 20,
-            bold: true,
-            margin: [0, 0, 0, 4]
-          },
-          subheader: {
-            fontSize: 11,
-            color: "#555",
-            margin: [0, 0, 0, 10]
-          },
-          header: {
-            fontSize: 18,
-            bold: true,
-            margin: [0, 0, 0, 10]
-          }
+
+      styles: {
+        titulo: {
+          fontSize: 20,
+          bold: true,
+          margin: [0, 0, 0, 4]
         },
+        subheader: {
+          fontSize: 11,
+          color: "#555",
+          margin: [0, 0, 0, 10]
+        }
+      }
     };
+
 
     const pdfBuffer = await new Promise((resolve, reject) => {
       const pdfDoc = printer.createPdfKitDocument(docDefinition);
@@ -325,6 +414,9 @@ if (rol === "agente") {
   return res.status(403).json({ msg: "Acceso denegado: rol no autorizado." });
 }
 
+const agente = await User.findById(agenteId);
+const watermarkUrl = agente?.logo || null;
+
 const propiedad = new Propiedad({
   titulo, 
   tipoOperacion,
@@ -362,24 +454,49 @@ const propiedad = new Propiedad({
 
     // 6️⃣ Imagen principal
     if (req.files?.imagenPrincipal?.[0]) {
-      const subida = await subirAGoogleStorage(
-        req.files.imagenPrincipal[0].path,
+
+      let buffer = fs.readFileSync(req.files.imagenPrincipal[0].path);
+
+      if (watermarkUrl) {
+        buffer = await aplicarMarcaAgua(buffer, watermarkUrl);
+      }
+
+      const subida = await subirBufferAGoogleStorage(
+        buffer,
+        req.files.imagenPrincipal[0].originalname,
         "ai24/propiedades"
       );
+
       fs.unlinkSync(req.files.imagenPrincipal[0].path);
+
       propiedad.imagenPrincipal = subida.url;
     }
 
     // 7️⃣ Imágenes secundarias
     if (req.files?.imagenes) {
       const imgs = [];
+
       for (const img of req.files.imagenes) {
-        const subida = await subirAGoogleStorage(img.path, "ai24/propiedades");
+        let buffer = fs.readFileSync(img.path);
+
+        if (watermarkUrl) {
+          buffer = await aplicarMarcaAgua(buffer, watermarkUrl);
+        }
+
+        const subida = await subirBufferAGoogleStorage(
+          buffer,
+          img.originalname,
+          "ai24/propiedades"
+        );
+
         fs.unlinkSync(img.path);
+
         imgs.push(subida.url);
       }
+
       propiedad.imagenes = imgs;
     }
+
 
     // 8️⃣ Estado inicial
     propiedad.estadoPublicacion = "no publicada";

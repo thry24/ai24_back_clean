@@ -4,10 +4,10 @@
   "description": "Backend de AI24",
   "main": "app.js",
   "type": "commonjs",
-"scripts": {
-  "dev": "set NODE_OPTIONS=--openssl-legacy-provider && nodemon app.js",
-  "start": "set NODE_OPTIONS=--openssl-legacy-provider && node app.js"
-},
+  "scripts": {
+    "dev": "set NODE_OPTIONS=--openssl-legacy-provider && nodemon app.js",
+    "start": "set NODE_OPTIONS=--openssl-legacy-provider && node app.js"
+  },
   "author": "Evan Galvez",
   "license": "ISC",
   "dependencies": {
@@ -33,6 +33,7 @@
     "pdfkit": "^0.17.2",
     "pdfmake": "^0.2.20",
     "resend": "^6.5.2",
+    "sharp": "^0.34.5",
     "socket.io": "^4.8.1",
     "stripe": "^18.5.0"
   },

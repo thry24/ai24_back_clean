@@ -41,6 +41,10 @@ const propiedadSchema = new mongoose.Schema({
     default: 0,
   },
 
+  marcaAguaPersonalizada: {
+    url: String,
+    public_id: String
+  },
 
   precio: { type: Number, required: true },
   precioRenta: { type: Number, required: false },

@@ -40,7 +40,7 @@ const UserSchema = new mongoose.Schema(
     googleId: { type: String, index: true, sparse: true },
     picture: String,
     logo: String,
-    
+
     marcaAgua: {
       url: String,
       public_id: String
@@ -105,15 +105,8 @@ UserSchema.pre("save", function (next) {
   if (this.rol !== "cliente") {
     this.tipoCliente = null;
   }
+  next();
 });
 
-  UserSchema.pre("save", function (next) {
-    // 🚫 Si no es cliente, eliminamos tipoCliente
-    if (this.rol !== "cliente") {
-      this.tipoCliente = null;
-    }
-
-    next();
-  });
 
 module.exports = mongoose.model("User", UserSchema);

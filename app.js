@@ -48,9 +48,13 @@ app.use(
       return callback(new Error("CORS bloqueado por seguridad"), false);
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+// ✅ Responder preflight (OPTIONS) para cualquier ruta
+app.options(/.*/, cors());
+
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 

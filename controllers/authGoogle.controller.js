@@ -1,60 +1,80 @@
-const { OAuth2Client } = require('google-auth-library');
+const User = require("../models/User");
+const jwt = require("jsonwebtoken");
+const { OAuth2Client } = require("google-auth-library");
 
-function getOAuthClient() {
-  return new OAuth2Client({
-    clientId: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI,
-  });
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+function makeJwt(user) {
+  return jwt.sign(
+    { id: user._id, rol: user.rol, nombre: user.nombre },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
 }
 
-exports.googleStart = (req, res) => {
-  const client = getOAuthClient();
-  const url = client.generateAuthUrl({
-    scope: ['openid','email','profile'],
-    prompt: 'consent',
-  });
-  res.redirect(url);
-};
-
-exports.googleCallback = async (req, res) => {
+exports.googleSignIn = async (req, res) => {
   try {
-    const client = getOAuthClient();
-    const { tokens } = await client.getToken(req.query.code);
-    const { googleId, email, nombre, picture } = await verifyGoogleIdToken(tokens.id_token);
+    // ✅ Acepta ambos: credential (GIS) o idToken (legacy)
+    const credential = req.body.credential || req.body.idToken;
+    const { rol, telefono, inmobiliaria } = req.body;
 
-    let user = await User.findOne({ $or: [{ googleId }, { correo: email }] }).select('+password');
-    if (!user) {
-      user = new User({
-        nombre: nombre || 'Usuario',
-        correo: email.toLowerCase(),
-        rol: 'cliente',
-        authProvider: 'google',
-        googleId,
-        picture
-      });
-      await user.save();
-    } else {
-      const toUpdate = {};
-      if (!user.googleId) toUpdate.googleId = googleId;
-      if (user.authProvider !== 'google') toUpdate.authProvider = 'google';
-      if (!user.picture && picture) toUpdate.picture = picture;
-      if (Object.keys(toUpdate).length) {
-        Object.assign(user, toUpdate);
-        await user.save();
-      }
+    if (!credential) {
+      return res.status(400).json({ msg: "Falta credential (o idToken) de Google" });
     }
 
-    const token = jwt.sign(
-      { id: user._id, rol: user.rol, nombre: user.nombre },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
+    // 1) Verificar ID token con Google
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
 
-    const frontend = process.env.FRONTEND_URL || 'https://tu-frontend.com';
-    return res.redirect(`${frontend}/auth/callback?token=${token}`);
+    const payload = ticket.getPayload();
+    const googleId = payload?.sub;
+    const email = (payload?.email || "").toLowerCase().trim();
+    const nombre = payload?.name || "Usuario";
+    const picture = payload?.picture || "";
+
+    if (!googleId || !email) {
+      return res.status(401).json({ msg: "Token Google inválido" });
+    }
+
+    // 2) Buscar/crear usuario
+    let user = await User.findOne({ $or: [{ googleId }, { correo: email }] }).select("+password");
+
+    if (!user) {
+      const rolValido = ["cliente", "agente", "inmobiliaria", "propietario"].includes(rol) ? rol : "cliente";
+
+      user = new User({
+        nombre,
+        correo: email,
+        rol: rolValido,
+        telefono: telefono || undefined,
+        authProvider: "google",
+        googleId,
+        picture,
+        inmobiliaria: rolValido === "agente" && inmobiliaria ? inmobiliaria : null,
+      });
+
+      if (rolValido === "agente" && picture) user.fotoPerfil = picture;
+      if (rolValido === "inmobiliaria" && picture) user.logo = picture;
+
+      await user.save();
+    } else {
+      let changed = false;
+      if (!user.googleId) { user.googleId = googleId; changed = true; }
+      if (user.authProvider !== "google") { user.authProvider = "google"; changed = true; }
+      if (!user.picture && picture) { user.picture = picture; changed = true; }
+      if (!user.fotoPerfil && picture) { user.fotoPerfil = picture; changed = true; }
+      if (changed) await user.save();
+    }
+
+    const token = makeJwt(user);
+    const out = user.toObject();
+    delete out.password;
+
+    return res.status(200).json({ token, user: out });
   } catch (err) {
-    console.error('[googleCallback] error:', err);
-    return res.status(500).send('Error en callback de Google');
+    console.error("[googleSignIn] error:", err);
+    return res.status(400).json({ msg: "Error con Google Sign-In", error: err.message });
   }
 };

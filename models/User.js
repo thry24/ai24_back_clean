@@ -40,15 +40,16 @@ const UserSchema = new mongoose.Schema(
     googleId: { type: String, index: true, sparse: true },
     picture: String,
     logo: String,
-    
+
     marcaAgua: {
       url: String,
-      public_id: String
+      public_id: String,
     },
     usarMarcaAgua: {
       type: Boolean,
-      default: true
+      default: true,
     },
+
     inmobiliaria: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Inmobiliaria",
@@ -84,36 +85,27 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-
-/// 🔒 Encriptar contraseña (solo si existe y cambia)
+// 🔒 Encriptar contraseña (solo si existe y cambia)
 UserSchema.pre("save", async function (next) {
-  if (!this.password) return next(); // usuarios Google
-  if (!this.isModified("password")) return next();
-
   try {
+    // usuarios google / sin password
+    if (!this.password) return next();
+    if (!this.isModified("password")) return next();
+
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
+    return next();
   } catch (err) {
-    next(err);
+    return next(err);
   }
 });
 
-
-/// 🚫 Limpiar tipoCliente si no es cliente
+// 🚫 Limpiar tipoCliente si no es cliente (solo 1 hook, SIEMPRE next)
 UserSchema.pre("save", function (next) {
   if (this.rol !== "cliente") {
     this.tipoCliente = null;
   }
+  return next();
 });
-
-  UserSchema.pre("save", function (next) {
-    // 🚫 Si no es cliente, eliminamos tipoCliente
-    if (this.rol !== "cliente") {
-      this.tipoCliente = null;
-    }
-
-    next();
-  });
 
 module.exports = mongoose.model("User", UserSchema);

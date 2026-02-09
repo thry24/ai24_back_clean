@@ -5,6 +5,8 @@ const { sendVerificationCode } = require("../utils/sendVerificationCode");
 const jwt = require("jsonwebtoken");
 const { verifyGoogleIdToken } = require('../services/googleVerify');
 const bcrypt = require("bcryptjs");
+const { OAuth2Client } = require("google-auth-library");
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 
 
@@ -607,154 +609,111 @@ exports.actualizarTipoCliente = async (req, res) => {
   }
 };
 
+// arriba en tu controller (una sola vez)
+
+
+
+
+
 exports.googleSignIn = async (req, res) => {
   try {
-    const { idToken, rol, telefono, inmobiliaria } = req.body;
-    if (!idToken) return res.status(400).json({ msg: 'Falta idToken de Google' });
+    console.log("✅ /api/auth/google HIT");
 
-    const { googleId, email, nombre, picture } = await verifyGoogleIdToken(idToken);
+    const credential = req.body?.credential || req.body?.idToken;
+    const { rol, telefono, inmobiliaria } = req.body || {};
 
-    let user = await User.findOne({ $or: [{ googleId }, { correo: email }] }).select('+password');
+    console.log("credential length:", credential?.length);
 
-    if (!user) {
-      const rolValido = ['cliente','agente','inmobiliaria','propietario'].includes(rol) ? rol : 'cliente';
-
-      user = new User({
-        nombre: nombre?.trim() || 'Usuario',
-        correo: email.toLowerCase(),
-        rol: rolValido,
-        telefono: telefono || undefined,
-        authProvider: 'google',
-        googleId,
-        picture,
-        inmobiliaria: rolValido === 'agente' && inmobiliaria ? inmobiliaria : null,
-
-      });
-
-      if (rolValido === 'agente' && picture) user.fotoPerfil = picture;
-      if (rolValido === 'inmobiliaria' && picture) user.logo = picture;
-
-      await user.save();
-    } else {
-      const toUpdate = {};
-      if (!user.googleId) toUpdate.googleId = googleId;
-      if (user.authProvider !== 'google') toUpdate.authProvider = 'google';
-      if (!user.picture && picture) toUpdate.picture = picture;
-      if (Object.keys(toUpdate).length) {
-        Object.assign(user, toUpdate);
-        await user.save();
-      }
+    if (!credential) {
+      return res.status(400).json({ msg: "Falta credential (o idToken) de Google" });
     }
 
-    const token = makeJwt(user);
-    const out = user.toObject();
-    delete out.password;
-    return res.status(200).json({ token, user: out });
-  } catch (err) {
-    console.error('[googleSignIn] error:', err);
-    return res.status(err.status || 500).json({ msg: err.message || 'Error con Google Sign-In' });
-  }
-
-
-
-const jwt = require("jsonwebtoken");
-const { OAuth2Client } = require("google-auth-library");
-const User = require("../models/User");
-
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
-
-function firmarJWT(user) {
-  // AJUSTA esto a como ya firmes tokens en tu /login actual
-  return jwt.sign(
-    { uid: user._id.toString(), rol: user.rol },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-}
-
-exports.googleSignIn = async (req, res) => {
-  try {
-    const { credential } = req.body; // <- viene del frontend GIS
-    if (!credential) return res.status(400).json({ msg: "Falta credential" });
-
-    // 1) Verifica token con Google
-    const ticket = await client.verifyIdToken({
+    console.log("⏳ verifyIdToken...");
+    const ticket = await googleClient.verifyIdToken({
       idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
+    console.log("✅ verifyIdToken OK");
 
-    const payload = ticket.getPayload();
-    // payload trae: sub, email, name, picture, email_verified, etc.
-    const googleId = payload?.sub;
-    const correo = (payload?.email || "").toLowerCase().trim();
-    const nombre = payload?.name || "Usuario";
-    const picture = payload?.picture || "";
+    const payload = ticket.getPayload() || {};
 
-    if (!correo || !googleId) {
+    const googleId = payload.sub;
+    const email = String(payload.email || "").toLowerCase().trim();
+    const nombre = String(payload.name || "Usuario").trim();
+    const picture = String(payload.picture || "");
+
+    if (!googleId || !email) {
       return res.status(401).json({ msg: "Token Google inválido" });
     }
 
-    // 2) Buscar usuario por correo (más práctico en tu app)
-    let user = await User.findOne({ correo });
+    console.log("⏳ buscando usuario...");
+    let user = await User.findOne({
+      $or: [{ googleId }, { correo: email }],
+    }).select("+password");
 
     if (!user) {
-      // Crear usuario nuevo
-      user = await User.create({
+      console.log("🆕 usuario NO existe, creando...");
+
+      const rolValido = ["cliente", "agente", "inmobiliaria", "propietario"].includes(rol)
+        ? rol
+        : "cliente";
+
+      user = new User({
         nombre,
-        correo,
-        rol: "cliente",          // <- aquí define tu default
-        tipoCliente: null,       // o lo que quieras
+        correo: email,
+        rol: rolValido,
+        telefono: telefono || undefined,
         authProvider: "google",
         googleId,
         picture,
-        fotoPerfil: picture,     // si quieres usarlo como fotoPerfil
+        inmobiliaria: rolValido === "agente" && inmobiliaria ? inmobiliaria : null,
       });
+
+      if (rolValido === "agente" && picture) user.fotoPerfil = picture;
+      if (rolValido === "inmobiliaria" && picture) user.logo = picture;
+
+      console.log("⏳ guardando nuevo user...");
+      await user.save();
+      console.log("✅ user creado y guardado");
     } else {
-      // Si existe: vincula googleId si no estaba
-      const needsUpdate =
-        user.googleId !== googleId ||
-        user.authProvider !== "google" ||
-        user.picture !== picture;
+      console.log("♻️ usuario encontrado:", user._id.toString());
 
-      if (needsUpdate) {
-        user.googleId = googleId;
-        user.picture = picture;
-        user.fotoPerfil = user.fotoPerfil || picture;
+      // OJO: aquí NO forzamos authProvider="google" si no quieres romper login normal
+      let changed = false;
 
-        // OJO: si ya era "local", puedes:
-        // - dejarlo "local" para permitir login por password
-        // - o cambiarlo a "google" si quieres forzar google login
-        // Yo recomiendo NO romper el login local:
-        if (!user.authProvider) user.authProvider = "local";
-        // Si sí quieres marcarlo google si fue creado antes:
-        // user.authProvider = user.authProvider === "local" ? "local" : "google";
+      if (!user.googleId) { user.googleId = googleId; changed = true; }
+      if (!user.picture && picture) { user.picture = picture; changed = true; }
+      if (!user.fotoPerfil && picture) { user.fotoPerfil = picture; changed = true; }
 
+      if (user.rol === "agente" && inmobiliaria && !user.inmobiliaria) {
+        user.inmobiliaria = inmobiliaria;
+        changed = true;
+      }
+
+      console.log("changed =", changed);
+
+      if (changed) {
+        console.log("⏳ guardando user actualizado...");
         await user.save();
+        console.log("✅ user actualizado guardado");
       }
     }
 
-    // 3) Emitir TU JWT
-    const token = firmarJWT(user);
+    console.log("⏳ firmando JWT...");
+    const token = makeJwt(user);
+    console.log("✅ JWT firmado");
 
-    // 4) Respuesta
-    res.json({
-      token,
-      user: {
-        _id: user._id,
-        nombre: user.nombre,
-        correo: user.correo,
-        rol: user.rol,
-        fotoPerfil: user.fotoPerfil,
-        tipoPlan: user.tipoPlan,
-        planActivo: user.planActivo,
-      },
-    });
+    const out = user.toObject();
+    delete out.password;
+
+    console.log("✅ respondiendo 200");
+    return res.status(200).json({ token, user: out });
   } catch (err) {
-    console.error("googleSignIn error:", err);
-    res.status(500).json({ msg: "Error en Google Sign-In" });
+    console.error("❌ [googleSignIn] error:", err);
+    return res.status(400).json({
+      msg: "Error en Google Sign-In",
+      error: err?.message || "Unknown error",
+    });
   }
 };
 
-
-
-};

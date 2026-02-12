@@ -5,16 +5,20 @@ const storage = multer.diskStorage({});
 
 const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
-  const allowedExts = [".jpg", ".jpeg", ".png", ".pdf", ".kmz", ".zip", ".webp"];
+  const allowedExts = [
+    ".jpg", ".jpeg", ".png",
+    ".pdf", ".kmz", ".zip", ".webp",
+    ".mp4", ".mov", ".avi", ".webm"
+  ];
   if (allowedExts.includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error("Archivo no permitido. Solo JPG, PNG, PDF, KMZ o ZIP."), false);
+    cb(new Error("Archivo no permitido. Solo imágenes, PDF, KMZ, ZIP o videos."), false);
   }
 };
 
 const limits = {
-  fileSize: 20 * 1024 * 1024, 
+  fileSize: 200 * 1024 * 1024 
 };
 
 const upload = multer({ storage, fileFilter, limits });
@@ -22,8 +26,12 @@ const upload = multer({ storage, fileFilter, limits });
 const uploadMultiple = upload.fields([
   { name: "imagenes", maxCount: 11 },
   { name: "imagenPrincipal", maxCount: 1 },
-  { name: "archivos", maxCount: 5 }
+  { name: "archivos", maxCount: 5 },
+  { name: "videos", maxCount: 5 },
+  { name: "pdf", maxCount: 1 }  
 ]);
+
+
 
 module.exports = (req, res, next) => {
   uploadMultiple(req, res, function (err) {

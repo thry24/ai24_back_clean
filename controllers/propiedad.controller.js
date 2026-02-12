@@ -22,7 +22,11 @@ const {
   subirBufferAGoogleStorage
 } = require("../utils/uploadToGCS");
 
-const sendPropertyPdfEmail = require('../utils/sendPropertyPdfEmail');
+const {
+  sendPropertyPdfEmail,
+  sendPrePublicacionEmail
+} = require('../utils/sendPropertyPdfEmail');
+
 const Mensaje = require('../models/Mensaje');
 const { hashParticipants } = require('../utils/chatHash')
 
@@ -270,12 +274,11 @@ exports.generarFichaPDF = async (req, res) => {
             logo ? { image: logo, width: 80 } : {},
             imagenPrincipal
               ? {
-  stack: [
-    imagenConMarcaAgua(imagenPrincipal, watermarkBase64)
-  ],
-  margin: [0, 0, 0, 10]
-}
-
+                  stack: [
+                    imagenConMarcaAgua(imagenPrincipal, watermarkBase64)
+                  ],
+                  margin: [0, 0, 0, 10]
+                }
               : {},
           ],
         },
@@ -345,9 +348,25 @@ function obtenerNombreAsesor({ propiedad, usuario }) {
 
 exports.agregarPropiedad = async (req, res) => {
   try {
-    // 1️⃣ Parseo de datos
-    const parsedData = JSON.parse(req.body.datos);
-    console.log('📥 Datos recibidos:', parsedData);
+
+    console.log("📦 Body recibido:", Object.keys(req.body));
+    console.log("📂 Files recibidos:", Object.keys(req.files || {}));
+
+    // 1️⃣ Validar datos
+    if (!req.body.datos) {
+      return res.status(400).json({
+        msg: "No se recibió el campo 'datos'."
+      });
+    }
+
+    let parsedData;
+    try {
+      parsedData = JSON.parse(req.body.datos);
+    } catch (err) {
+      return res.status(400).json({
+        msg: "El campo 'datos' no es JSON válido."
+      });
+    }
 
     const {
       titulo,
@@ -367,92 +386,52 @@ exports.agregarPropiedad = async (req, res) => {
       precioRenta
     } = parsedData;
 
-    // 2️⃣ Regla de negocio: precioRenta solo aplica en venta/renta
+    // 2️⃣ Precio renta regla
     const precioRentaFinal =
       tipoOperacion === "venta/renta" ? precioRenta : null;
 
-    // 3️⃣ 🔥 LIMPIEZA OBLIGATORIA CASA / DEPARTAMENTO (ANTES DE CREAR EL DOCUMENTO)
-    if (caracteristicas?.casaDepto) {
+    // 3️⃣ Rol
+    const rol = (req.user?.rol || "").toLowerCase();
 
-      if (!titulo) {
-        return res.status(400).json({
-          msg: "El título de la propiedad es obligatorio."
-        });
-      }
+    let agenteId = null;
+    let inmobiliariaId = null;
 
-      if (tipoPropiedad === "casa") {
-        console.log('🧹 Limpieza: eliminando departamento (es CASA)');
-        delete caracteristicas.casaDepto.departamento;
-      }
-
-      if (tipoPropiedad === "departamento") {
-        console.log('🧹 Limpieza: eliminando casa (es DEPARTAMENTO)');
-        delete caracteristicas.casaDepto.casa;
-      }
+    if (rol === "agente") {
+      agenteId = req.user.id;
+      inmobiliariaId = req.user.inmobiliaria || inmobiliaria || null;
+    } else if (rol === "inmobiliaria") {
+      inmobiliariaId = req.user.id;
+    } else {
+      return res.status(403).json({
+        msg: "Rol no autorizado"
+      });
     }
 
-    // 🔍 LOG FINAL PARA CONFIRMAR (MUY IMPORTANTE)
-    console.log(
-      '🧪 casaDepto FINAL:',
-      JSON.stringify(caracteristicas?.casaDepto, null, 2)
-    );
+    const agente = agenteId ? await User.findById(agenteId) : null;
+    const watermarkUrl = agente?.logo || null;
 
-    // 4️⃣ Creación del documento (DESPUÉS de limpiar)
-const rol = (req.user?.rol || "").toLowerCase();
+    // 4️⃣ Crear propiedad
+    const propiedad = new Propiedad({
+      titulo,
+      tipoOperacion,
+      tipoPropiedad,
+      precio,
+      precioRenta: precioRentaFinal,
+      descripcion,
+      direccion,
+      estadoPropiedad,
+      comision,
+      datosPropietario,
+      caracteristicas,
+      generales,
+      servicios,
+      amenidades,
+      agente: agenteId,
+      inmobiliaria: inmobiliariaId,
+      estadoPublicacion: "no publicada",
+    });
 
-let agenteId = null;
-let inmobiliariaId = null;
-
-if (rol === "agente") {
-  agenteId = req.user.id;
-  // si el agente pertenece a una inmobiliaria, úsala
-  inmobiliariaId = req.user.inmobiliaria || inmobiliaria || null;
-} else if (rol === "inmobiliaria") {
-  inmobiliariaId = req.user.id;
-  agenteId = null;
-} else {
-  return res.status(403).json({ msg: "Acceso denegado: rol no autorizado." });
-}
-
-const agente = await User.findById(agenteId);
-const watermarkUrl = agente?.logo || null;
-
-const propiedad = new Propiedad({
-  titulo, 
-  tipoOperacion,
-  tipoPropiedad,
-  precio,
-  precioRenta: precioRentaFinal,
-  descripcion,
-  direccion,
-  estadoPropiedad,
-  comision,
-  datosPropietario,
-  caracteristicas,
-  generales,
-  servicios,
-  amenidades,
-  agente: agenteId,
-  inmobiliaria: inmobiliariaId,
-});
-
-
-    // 5️⃣ Archivos adjuntos
-    if (req.files?.archivos) {
-      const docs = [];
-      for (const archivo of req.files.archivos) {
-        const subida = await subirAGoogleStorage(archivo.path, "ai24/archivos");
-        fs.unlinkSync(archivo.path);
-        docs.push({
-          nombre: archivo.originalname,
-          tipo: getTipoArchivo(archivo.originalname),
-          url: subida.url,
-        });
-      }
-      propiedad.archivos = docs;
-    }
-
-    // 6️⃣ Imagen principal
+    // 5️⃣ Imagen principal
     if (req.files?.imagenPrincipal?.[0]) {
 
       let buffer = fs.readFileSync(req.files.imagenPrincipal[0].path);
@@ -472,11 +451,12 @@ const propiedad = new Propiedad({
       propiedad.imagenPrincipal = subida.url;
     }
 
-    // 7️⃣ Imágenes secundarias
+    // 6️⃣ Imágenes secundarias
     if (req.files?.imagenes) {
       const imgs = [];
 
       for (const img of req.files.imagenes) {
+
         let buffer = fs.readFileSync(img.path);
 
         if (watermarkUrl) {
@@ -497,28 +477,106 @@ const propiedad = new Propiedad({
       propiedad.imagenes = imgs;
     }
 
+    // 7️⃣ Archivos
+    if (req.files?.archivos) {
+      const docs = [];
 
-    // 8️⃣ Estado inicial
-    propiedad.estadoPublicacion = "no publicada";
+      for (const archivo of req.files.archivos) {
+        const subida = await subirAGoogleStorage(
+          archivo.path,
+          "ai24/archivos"
+        );
+
+        fs.unlinkSync(archivo.path);
+
+        docs.push({
+          nombre: archivo.originalname,
+          tipo: getTipoArchivo(archivo.originalname),
+          url: subida.url,
+        });
+      }
+
+      propiedad.archivos = docs;
+    }
+
+    // 8️⃣ Videos
+    if (req.files?.videos) {
+      const vids = [];
+
+      for (const video of req.files.videos) {
+        const buffer = fs.readFileSync(video.path);
+
+        const subida = await subirBufferAGoogleStorage(
+          buffer,
+          video.originalname,
+          "ai24/propiedades/videos"
+        );
+
+        fs.unlinkSync(video.path);
+
+        vids.push(subida.url);
+      }
+
+      propiedad.videos = vids;
+    }
 
     // 9️⃣ Clave automática
     propiedad.clave = await generarClave(direccion);
 
-    // 🔟 Guardado final
+    // 🔟 Guardar
     await propiedad.save();
 
+    console.log("✅ Propiedad guardada correctamente");
+
+    // 1️⃣1️⃣ Responder primero
     res.status(201).json({
       msg: "Propiedad registrada con éxito.",
       propiedad
     });
 
+    // 1️⃣2️⃣ Enviar correo después
+    const propietarioEmail = propiedad?.datosPropietario?.email;
+    const usuarioActivoEmail = req?.user?.email || req?.user?.correo;
+
+    let pdfBase64 = null;
+
+    if (req.files?.pdf?.[0]) {
+      const buffer = fs.readFileSync(req.files.pdf[0].path);
+      pdfBase64 = buffer.toString("base64");
+      fs.unlinkSync(req.files.pdf[0].path);
+    }
+
+
+    const correos = [propietarioEmail, usuarioActivoEmail].filter(Boolean);
+
+    console.log("📩 Correos detectados:", correos);
+    console.log("📄 PDF recibido:", pdfBase64 ? "SI" : "NO");
+
+    if (correos.length >= 2) {
+      sendPrePublicacionEmail({
+        correoCliente: propietarioEmail,
+        correoAsesor: usuarioActivoEmail,
+        pdfBase64,
+      })
+      .then(() => {
+        console.log("📧 Pre-correo enviado correctamente");
+      })
+      .catch(err => {
+        console.error("❌ Error enviando pre-correo:", err);
+      });
+    }
+
   } catch (error) {
     console.error("❌ Error al registrar propiedad:", error);
-    res.status(500).json({
-      msg: "Error interno al registrar la propiedad."
-    });
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        msg: "Error interno al registrar la propiedad."
+      });
+    }
   }
 };
+
 
 
 async function generarClave(direccion) {
@@ -834,21 +892,49 @@ exports.actualizarPropiedad = async (req, res) => {
     }
 
     if (req.files?.imagenPrincipal?.[0]) {
-      const subida = await subirAGoogleStorage(
-        req.files.imagenPrincipal[0].path,
+
+      const file = req.files.imagenPrincipal[0];
+
+      let buffer = fs.readFileSync(file.path);
+
+      if (propiedad.agente?.logo) {
+        buffer = await aplicarMarcaAgua(buffer, propiedad.agente.logo);
+      }
+
+      const subida = await subirBufferAGoogleStorage(
+        buffer,
+        file.originalname,
         "ai24/propiedades"
       );
-      fs.unlinkSync(req.files.imagenPrincipal[0].path);
+
+      fs.unlinkSync(file.path);
+
       propiedad.imagenPrincipal = subida.url;
     }
 
     if (req.files?.imagenes) {
+
       for (const file of req.files.imagenes) {
-        const subida = await subirAGoogleStorage(file.path, "ai24/propiedades");
-        propiedad.imagenes.push(subida.url);
+
+        let buffer = fs.readFileSync(file.path);
+
+        if (propiedad.agente?.logo) {
+          buffer = await aplicarMarcaAgua(buffer, propiedad.agente.logo);
+        }
+
+        const subida = await subirBufferAGoogleStorage(
+          buffer,
+          file.originalname,
+          "ai24/propiedades"
+        );
+
         fs.unlinkSync(file.path);
+
+        propiedad.imagenes.push(subida.url);
       }
     }
+
+
 
     propiedad.imagenes = [...new Set(propiedad.imagenes)];
 
@@ -858,12 +944,16 @@ exports.actualizarPropiedad = async (req, res) => {
 
     if (req.files?.archivos) {
       for (const archivo of req.files.archivos) {
-        const subida = await subirAGoogleStorage(archivo.path, "ai24/archivos");
-        propiedad.archivos.push({
-          nombre: archivo.originalname,
-          tipo: getTipoArchivo(archivo.originalname),
-          url: subida.url,
-        });
+        const file = req.files.imagenPrincipal[0];
+        const extension = path.extname(file.originalname);
+
+        const subida = await subirAGoogleStorage(
+          file.path,
+          "ai24/propiedades",
+          extension,
+          file.mimetype
+        );
+
         fs.unlinkSync(archivo.path);
       }
     }

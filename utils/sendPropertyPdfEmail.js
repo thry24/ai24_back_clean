@@ -80,4 +80,62 @@ async function sendPropertyPdfEmail({
   });
 }
 
-module.exports = sendPropertyPdfEmail;
+async function sendPrePublicacionEmail({
+  correoCliente,
+  correoAsesor,
+  pdfBase64,
+}) {
+
+  const attachments = [];
+
+  if (pdfBase64) {
+    const base64Data = pdfBase64.includes('base64,')
+      ? pdfBase64.split('base64,')[1]
+      : pdfBase64;
+
+    attachments.push({
+      filename: 'ficha-tecnica-thry24.pdf',
+      content: base64Data,
+    });
+  }
+
+  await resend.emails.send({
+    from: 'THRY24 <verificaciones@thry24.com>',
+    to: correoCliente,
+    subject: '📝 Tu propiedad está por ser publicada en THRY24',
+    html: `
+      <h2>📝 Tu propiedad está por ser publicada en THRY24</h2>
+
+      <p>
+        Hemos recibido la información de tu propiedad.
+      </p>
+
+      <p>
+        Es importante validar todos los datos con tu asesor 
+        <b>${correoAsesor}</b> antes de su publicación oficial en
+        <b>THRY24.com</b>.
+      </p>
+
+      <br />
+
+      <p>
+        Una vez confirmada la información, tu propiedad será publicada
+        dentro del portal.
+      </p>
+
+      <br />
+
+      <p>— Equipo THRY24</p>
+    `,
+    attachments,
+  });
+
+  console.log('✅ Pre-correo enviado al cliente');
+}
+
+
+module.exports = {
+  sendPropertyPdfEmail,
+  sendPrePublicacionEmail
+};
+

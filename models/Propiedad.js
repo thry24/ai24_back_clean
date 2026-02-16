@@ -183,17 +183,23 @@ const propiedadSchema = new mongoose.Schema({
     },
   },
 
-    terreno: {
-      m2Frente: String,
-      m2Fondo: String,
-      superficie: String,
-      tipo: String,
-      costoXM2: String,
-      kmz: Boolean,
-      agua: Boolean,
-      luz: Boolean,
-      drenaje: Boolean,
+  terreno: {
+    m2Frente: String,
+    m2Fondo: String,
+    superficie: String,
+    tipo: String,
+    costoXM2: String,
+
+    kmz: {
+      disponible: { type: Boolean, default: false },
+      visiblePublico: { type: Boolean, default: false },
+      archivo: { type: String, default: null } // URL del KMZ
     },
+
+    agua: Boolean,
+    luz: Boolean,
+    drenaje: Boolean,
+  },
 
     local: {
       tipoCentro: String,
@@ -274,6 +280,7 @@ const propiedadSchema = new mongoose.Schema({
     },
 
     edificio: {
+      superficie: String,
       m2xPiso: String,
       uso: String,
       pisosEdificio: Number,

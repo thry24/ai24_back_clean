@@ -406,7 +406,7 @@ exports.agregarPropiedad = async (req, res) => {
         msg: "Rol no autorizado"
       });
     }
-
+    
     const agente = agenteId ? await User.findById(agenteId) : null;
     const watermarkUrl = agente?.logo || null;
 
@@ -523,8 +523,56 @@ exports.agregarPropiedad = async (req, res) => {
     // 9️⃣ Clave automática
     propiedad.clave = await generarClave(direccion);
 
-    // 🔟 Guardar
+    // Buscar duplicadas
+    const duplicadas = await Propiedad.find({
+      "direccion.lat": direccion.lat,
+      "direccion.lng": direccion.lng
+    })
+    .populate("agente", "nombre email correo")
+    .lean();
+
+    // Guardar propiedad nueva
     await propiedad.save();
+
+    // Crear colaboraciones si hay duplicadas
+    if (duplicadas.length > 0) {
+
+      for (const propExistente of duplicadas) {
+        
+        if (propExistente.agente?._id.toString() === agenteId.toString()) {
+          continue;
+        }
+
+        const agenteEmailExistente =
+          propExistente.agente?.email ||
+          propExistente.agente?.correo;
+
+        await Colaboracion.create({
+          propiedad: propExistente._id,
+          agentePrincipal: propExistente.agente?._id,
+          colaborador: agenteId,
+          tipoColaboracion: "duplicada",
+          estado: "pendiente",
+          nombrePropiedad: propExistente.clave,
+          colaboradorEmail: agente?.email || agente?.correo,
+          agenteEmail: agenteEmailExistente
+        });
+
+        // Enviar correo
+        if (agenteEmailExistente) {
+          try {
+            await enviarSolicitudColaboracion({
+              to: agenteEmailExistente,
+              agenteNombre: agente?.nombre,
+              propiedadClave: propExistente.clave,
+              imagenPropiedad: propExistente.imagenPrincipal
+            });
+          } catch (e) {
+            console.error("Error enviando correo colaboración:", e);
+          }
+        }
+      }
+    }
 
     console.log("✅ Propiedad guardada correctamente");
 

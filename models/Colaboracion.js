@@ -7,7 +7,7 @@ const colaboracionSchema = new mongoose.Schema(
 
     tipoColaboracion: {
       type: String,
-      enum: ["inmobiliaria", "externo", "manual"],
+      enum: ["inmobiliaria", "externo", "manual", "duplicada"],
       required: true,
     },
 

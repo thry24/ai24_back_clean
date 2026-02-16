@@ -139,18 +139,23 @@ exports.initRegister = async (req, res) => {
       }
     }
 
-    const imagen = req.files?.file?.[0];
+const imagen = req.files?.file?.[0];
 
-    if (imagen) {
-      const carpeta =
-        rol === "agente"
-          ? "ai24/agentes"
-          : rol === "inmobiliaria"
-          ? "ai24/inmobiliarias"
-          : "ai24/clientes";
+if (imagen) {
+  const carpeta =
+    rol === "agente"
+      ? "ai24/agentes"
+      : rol === "inmobiliaria"
+      ? "ai24/inmobiliarias"
+      : "ai24/clientes";
 
-      imagenSubida = await subirAGoogleStorage(imagen.path, carpeta);
-    }
+  try {
+    imagenSubida = await subirAGoogleStorage(imagen.path, carpeta);
+  } catch (e) {
+    console.error("⚠️ Falló upload a GCS, se continúa sin imagen:", e?.message || e);
+    imagenSubida = null; // 👉 continúa registro sin foto/logo
+  }
+}
 
     /*
     // ❌ FIRMA DESHABILITADA POR AHORA
@@ -613,6 +618,16 @@ exports.actualizarTipoCliente = async (req, res) => {
 
 
 
+// ✅ Helper para decidir si falta completar perfil
+function needsProfileCompletion(user) {
+  // Reglas mínimas (ajústalas a tu gusto):
+  // - teléfono obligatorio
+  // - si es cliente: tipoCliente obligatorio
+  // - si es agente: inmobiliaria puede ser null (independiente), pero puedes exigir algo si quieres
+  if (!user.telefono) return true;
+  if (user.rol === "cliente" && !user.tipoCliente) return true;
+  return false;
+}
 
 
 exports.googleSignIn = async (req, res) => {
@@ -625,7 +640,9 @@ exports.googleSignIn = async (req, res) => {
     console.log("credential length:", credential?.length);
 
     if (!credential) {
-      return res.status(400).json({ msg: "Falta credential (o idToken) de Google" });
+      return res
+        .status(400)
+        .json({ msg: "Falta credential (o idToken) de Google" });
     }
 
     console.log("⏳ verifyIdToken...");
@@ -651,10 +668,15 @@ exports.googleSignIn = async (req, res) => {
       $or: [{ googleId }, { correo: email }],
     }).select("+password");
 
+    let isNew = false;
+
     if (!user) {
       console.log("🆕 usuario NO existe, creando...");
+      isNew = true;
 
-      const rolValido = ["cliente", "agente", "inmobiliaria", "propietario"].includes(rol)
+      const rolValido = ["cliente", "agente", "inmobiliaria", "propietario"].includes(
+        rol
+      )
         ? rol
         : "cliente";
 
@@ -662,7 +684,7 @@ exports.googleSignIn = async (req, res) => {
         nombre,
         correo: email,
         rol: rolValido,
-        telefono: telefono || undefined,
+        telefono: telefono || null, // 👈 importante: null para detectar incompleto
         authProvider: "google",
         googleId,
         picture,
@@ -678,12 +700,23 @@ exports.googleSignIn = async (req, res) => {
     } else {
       console.log("♻️ usuario encontrado:", user._id.toString());
 
-      // OJO: aquí NO forzamos authProvider="google" si no quieres romper login normal
+      // No forzamos authProvider="google" para no romper login local
       let changed = false;
 
-      if (!user.googleId) { user.googleId = googleId; changed = true; }
-      if (!user.picture && picture) { user.picture = picture; changed = true; }
-      if (!user.fotoPerfil && picture) { user.fotoPerfil = picture; changed = true; }
+      if (!user.googleId) {
+        user.googleId = googleId;
+        changed = true;
+      }
+
+      if (!user.picture && picture) {
+        user.picture = picture;
+        changed = true;
+      }
+
+      if (!user.fotoPerfil && picture) {
+        user.fotoPerfil = picture;
+        changed = true;
+      }
 
       if (user.rol === "agente" && inmobiliaria && !user.inmobiliaria) {
         user.inmobiliaria = inmobiliaria;
@@ -699,6 +732,12 @@ exports.googleSignIn = async (req, res) => {
       }
     }
 
+    // ✅ Decide si necesita completar perfil (ajusta reglas a tu gusto)
+    const needsProfile =
+      !user.telefono || (user.rol === "cliente" && !user.tipoCliente);
+
+    console.log("needsProfile =", needsProfile, "isNew =", isNew);
+
     console.log("⏳ firmando JWT...");
     const token = makeJwt(user);
     console.log("✅ JWT firmado");
@@ -706,8 +745,25 @@ exports.googleSignIn = async (req, res) => {
     const out = user.toObject();
     delete out.password;
 
+    // ✅ Datos para prellenar tu formulario (tipo EasyBroker)
+    const prefill = {
+      nombre: out.nombre,
+      correo: out.correo,
+      fotoPerfil: out.fotoPerfil || out.picture || "",
+      telefono: out.telefono || "",
+      rol: out.rol || "cliente",
+      tipoCliente: out.tipoCliente || null,
+    };
+
     console.log("✅ respondiendo 200");
-    return res.status(200).json({ token, user: out });
+    return res.status(200).json({
+      token,
+      user: out,
+      isNew,
+      needsProfile,
+      prefill,
+      redirectTo: needsProfile || isNew ? "/registro" : "/home",
+    });
   } catch (err) {
     console.error("❌ [googleSignIn] error:", err);
     return res.status(400).json({
@@ -715,5 +771,90 @@ exports.googleSignIn = async (req, res) => {
       error: err?.message || "Unknown error",
     });
   }
+
+
 };
+
+exports.completeGoogleProfile = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.user?.userId; // ✅ soporta ambos
+    const { telefono, rol, tipoCliente, inmobiliaria } = req.body || {};
+
+    console.log("✅ [completeGoogleProfile] userId:", userId);
+    console.log("✅ [completeGoogleProfile] body:", req.body);
+
+    if (!userId) return res.status(401).json({ msg: "No autorizado" });
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ msg: "Usuario no encontrado" });
+
+    // Teléfono
+    if (telefono !== undefined) {
+      const tel = String(telefono || "").trim();
+      user.telefono = tel ? tel : null;
+    }
+
+    // Rol
+    const rolesPermitidos = ["cliente", "agente", "inmobiliaria", "propietario"];
+    if (rol) {
+      const rolNorm = String(rol).trim().toLowerCase();
+      if (!rolesPermitidos.includes(rolNorm)) {
+        return res.status(400).json({ msg: "Rol inválido" });
+      }
+      user.rol = rolNorm;
+    }
+
+    // según rol
+    if (user.rol === "cliente") {
+      const tiposValidos = ["comprador", "propietario", "arrendatario"];
+      if (!tipoCliente || !tiposValidos.includes(tipoCliente)) {
+        return res.status(400).json({ msg: "Tipo de cliente inválido" });
+      }
+      user.tipoCliente = tipoCliente;
+      user.inmobiliaria = null;
+    } else {
+      user.tipoCliente = null;
+    }
+
+    if (user.rol === "agente") {
+      user.inmobiliaria = inmobiliaria ? String(inmobiliaria).trim() : null;
+    }
+
+    if (user.rol === "inmobiliaria") {
+      // opcional: crear doc inmobiliaria si no existe y ligarlo
+      if (!user.inmobiliaria) {
+        const nuevaInmobiliaria = new Inmobiliaria({
+          nombre: user.nombre,
+          correo: user.correo,
+          telefono: user.telefono,
+          direccion: "",
+          status: "Active",
+          tipoPlan: "gratis",
+          planActivo: false,
+          planExpira: null,
+        });
+        await nuevaInmobiliaria.save();
+        user.inmobiliaria = nuevaInmobiliaria._id;
+      }
+    }
+
+    await user.save();
+
+    const out = user.toObject();
+    delete out.password;
+
+    // ✅ token NUEVO con rol actualizado
+    const token = makeJwt(user);
+
+    return res.json({ ok: true, user: out, token });
+  } catch (err) {
+    console.error("❌ completeGoogleProfile error:", err);
+    return res.status(500).json({ msg: "Error interno" });
+  }
+};
+
+
+
+
+
 

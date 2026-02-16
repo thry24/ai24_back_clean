@@ -13,25 +13,31 @@ async function aplicarMarcaAgua(bufferImagen, watermarkUrl) {
       responseType: "arraybuffer"
     });
 
-    const watermarkBuffer = Buffer.from(response.data);
+    let watermarkBuffer = Buffer.from(response.data);
 
-    // 3️⃣ Redimensionar watermark proporcionalmente
+    // 3️⃣ Convertir watermark a PNG (para respetar transparencias)
+    watermarkBuffer = await sharp(watermarkBuffer)
+      .png()
+      .toBuffer();
+
+    // 4️⃣ Redimensionar watermark proporcionalmente
     const anchoWatermark = Math.min(
-      Math.floor(anchoImagen * 0.18), // 18% del ancho
-      220 // nunca más grande que esto
+      Math.floor(anchoImagen * 0.25), // 25% del ancho
+      300
     );
 
     const watermarkResize = await sharp(watermarkBuffer)
       .resize({ width: anchoWatermark })
-      .png()
       .toBuffer();
 
-    // 4️⃣ Componer imagen
+    // 5️⃣ Componer imagen con marca centrada
     const imagenFinal = await sharp(bufferImagen)
       .composite([
         {
           input: watermarkResize,
-          gravity: "southeast"
+          gravity: "center",   // 👈 AQUÍ va centrado
+          blend: "over",
+          opacity: 0.35        // 👈 transparencia real
         }
       ])
       .jpeg({ quality: 92 })

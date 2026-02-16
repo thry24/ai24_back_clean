@@ -48,6 +48,7 @@ const propiedadSchema = new mongoose.Schema({
 
   precio: { type: Number, required: true },
   precioRenta: { type: Number, required: false },
+  costoMantenimiento: { type: Number, default: 0 }, 
   descripcion: String,
 
   direccion: {
@@ -68,7 +69,7 @@ const propiedadSchema = new mongoose.Schema({
 
   estadoPropiedad: {
     type: String,
-    enum: ["activa", "oportunidad", "remate bancario", "con inquilino",'nueva', 'preventa'],
+    enum: ["activa", "oportunidad", "remate bancario", "con inquilino",'nuevo', 'preventa'],
     default: "activa",
   },
 
@@ -108,7 +109,14 @@ const propiedadSchema = new mongoose.Schema({
       tipoEstacionamiento: String,
       pisos: Number,
       cocina: String,
-      barraDesayunador: Boolean,
+      barra: {
+        type: Boolean,
+        default: false
+      },
+      desayunador: {
+        type: Boolean,
+        default: false
+      },
       balcon: Boolean,
       salaTV: Boolean,
       patio: Boolean,
@@ -127,27 +135,53 @@ const propiedadSchema = new mongoose.Schema({
       jardin: Boolean,
       terraza: Boolean,
         // 🔹 SOLO CASA
-  casa: {
-    tipo: {
-      type: String,
-      enum: ["privada", "calle_abierta", "condominio", "uso_comercial"],
-      default: undefined
-    }
-  },
+      casa: {
+        tipo: {
+          type: String,
+          enum: ["privada", "calle_abierta", "condominio", "uso_comercial"],
+          default: undefined
+        },
+        frente: {
+          type: Number,
+          default: null
+        },
+        fondo: {
+          type: Number,
+          default: null
+        },
+        albercaPrivada: {
+          type: Boolean,
+          default: false
+        }
+      },
 
-  // 🔹 SOLO DEPARTAMENTO
-  departamento: {
-    nivel: {
-      type: String,
-      enum: ["planta_baja", "planta_alta"],
-      default: undefined   // 🔥 CLAVE
+    // 🔹 SOLO DEPARTAMENTO
+    departamento: {
+      nivel: {
+        type: String,
+        enum: ["planta_baja", "planta_alta"],
+        default: undefined
+      },
+      numeroPiso: {
+        type: Number,
+        default: null
+      }
     },
-    numeroPiso: {
-      type: Number,
-      default: null
-    }
+
+    // 🔹 AMBOS (CASA Y DEPTO)
+    gymPrivado: {
+      type: Boolean,
+      default: false
+    },
+    jacuzzi: {
+      activo: { type: Boolean, default: false },
+      tipo: {
+        type: String,
+        enum: ["interior", "exterior"],
+        default: undefined
+      }
+    },
   },
-    },
 
     terreno: {
       m2Frente: String,
@@ -166,6 +200,7 @@ const propiedadSchema = new mongoose.Schema({
       plaza: String,
       pasillo: String,
       planta: String,
+      nivel: Number, 
       superficie: String,
       m2Frente: String,
       m2Fondo: String,
@@ -173,7 +208,6 @@ const propiedadSchema = new mongoose.Schema({
       giro: String,
       seguridad: Boolean,
       elevador: Boolean,
-      costoMantenimiento: Number,    // nuevo
       entrega: String, 
       estacionamiento: String,
       tipoEstacionamiento: String,
@@ -234,7 +268,8 @@ const propiedadSchema = new mongoose.Schema({
       cocina: Boolean,
       aireAcondicionado: Boolean,
       equipadas: Boolean,
-      estacionamiento: Boolean,
+      estacionamiento: String,
+      tipoEstacionamiento: String,
       entrega: String,
     },
 
@@ -313,6 +348,7 @@ const propiedadSchema = new mongoose.Schema({
   },
 
   imagenes: [String],
+  videos: [String],
 
   imagenPrincipal: String,
 
@@ -347,7 +383,8 @@ propiedadSchema.pre("save", function (next) {
     construccion: (v) => `Construcción de ${v} m²`,
     pisos: (v) => `${v} piso${v > 1 ? "s" : ""}`,
     cocina: (v) => (v ? `Cocina tipo ${v}` : ""),
-    barraDesayunador: (v) => (v ? "Barra desayunador" : ""),
+    barra: (v) => (v ? "Barra" : ""),
+    desayunador: (v) => (v ? "Desayunador" : ""),
     balcon: (v) => (v ? "Balcón" : ""),
     salaTV: (v) => (v ? "Sala de TV" : ""),
     estudio: (v) => (v ? "Estudio" : ""),

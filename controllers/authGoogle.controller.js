@@ -44,16 +44,18 @@ exports.googleSignIn = async (req, res) => {
     if (!user) {
       const rolValido = ["cliente", "agente", "inmobiliaria", "propietario"].includes(rol) ? rol : "cliente";
 
+
       user = new User({
         nombre,
         correo: email,
         rol: rolValido,
-        telefono: telefono || undefined,
         authProvider: "google",
         googleId,
         picture,
+        ...(telefono ? { telefono: String(telefono).trim() } : {}),
         inmobiliaria: rolValido === "agente" && inmobiliaria ? inmobiliaria : null,
       });
+
 
       if (rolValido === "agente" && picture) user.fotoPerfil = picture;
       if (rolValido === "inmobiliaria" && picture) user.logo = picture;

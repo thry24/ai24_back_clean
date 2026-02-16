@@ -1,78 +1,60 @@
 const express = require("express");
-const bcrypt = require('bcryptjs');
 const router = express.Router();
-const register = require("../controllers/auth.controller");
-const { generarPassword } = require('../utils/password');
-const { enviarRecuperacionPassword } = require('../utils/mailer');
-const upload = require("../middlewares/upload.middleware");
-const { verifyToken } = require("../middlewares/authMiddleware");
+
 const authController = require("../controllers/auth.controller");
-const User = require("../models/User");
+const { generarPassword } = require("../utils/password");
+const { enviarRecuperacionPassword } = require("../utils/mailer");
+const upload = require("../middlewares/upload.middleware");
 const uploadLogo = require("../middlewares/uploadLogo.middleware");
+const { verifyToken } = require("../middlewares/authMiddleware");
+const User = require("../models/User");
 
-router.get("/users", verifyToken, register.listUsers);
-router.get("/me", verifyToken, register.getUsuarioActual);
-router.get("/inmobiliaria", register.obtenerInmobiliaria);
-router.get(
-  "/agentes/:id/disponibilidad",
-  register.obtenerHorasDisponibles
-);
-router.post("/initregister", upload, register.initRegister);
-router.post("/verify", register.verifyCode);
-router.post("/register", register.register);
-router.post("/login", register.login);
-router.put("/agentes/:id/disponibilidad", register.actualizarDisponibilidad);
-router.get('/agentes', register.obtenerAgentes);
+console.log("completeGoogleProfile:", typeof authController.completeGoogleProfile);
 
+router.get("/users", verifyToken, authController.listUsers);
+router.get("/me", verifyToken, authController.getUsuarioActual);
+router.get("/inmobiliaria", authController.obtenerInmobiliaria);
 
-router.put('/tipo-cliente', authController.actualizarTipoCliente);
+router.get("/agentes/:id/disponibilidad", authController.obtenerHorasDisponibles);
+router.put("/agentes/:id/disponibilidad", authController.actualizarDisponibilidad);
 
-router.put(
-  "/actualizar-foto",
-  verifyToken,
-  upload,
-  register.actualizarFotoPerfil
-);
+router.post("/initregister", upload, authController.initRegister);
+router.post("/verify", authController.verifyCode);
+router.post("/register", authController.register);
+router.post("/login", authController.login);
 
-router.put(
-  "/actualizar-logo",
-  verifyToken,
-  uploadLogo,
-  register.actualizarLogo
-);
+router.get("/agentes", authController.obtenerAgentes);
 
+router.put("/tipo-cliente", verifyToken, authController.actualizarTipoCliente);
 
+router.put("/actualizar-foto", verifyToken, upload, authController.actualizarFotoPerfil);
+router.put("/actualizar-logo", verifyToken, uploadLogo, authController.actualizarLogo);
 
-router.post('/google', register.googleSignIn);
+router.post("/google", authController.googleSignIn);
+router.put("/google/complete-profile", verifyToken, authController.completeGoogleProfile);
 
-
-
-router.post('/recuperar-password', async (req, res) => {
+router.post("/recuperar-password", async (req, res) => {
   try {
     const { correo } = req.body;
 
     const user = await User.findOne({ correo: correo.toLowerCase().trim() });
-
-    if (!user) {
-      return res.json({ ok: true });
-    }
+    if (!user) return res.json({ ok: true });
 
     const nuevaPassword = generarPassword();
-
     user.password = nuevaPassword;
-    await user.save(); 
+    await user.save();
 
     await enviarRecuperacionPassword({
       to: correo,
       nombre: user.nombre,
-      password: nuevaPassword
+      password: nuevaPassword,
     });
 
     res.json({ ok: true });
-
   } catch (err) {
-    console.error('Error recuperar password:', err);
-    res.status(500).json({ msg: 'Error al recuperar contraseña' });
+    console.error("Error recuperar password:", err);
+    res.status(500).json({ msg: "Error al recuperar contraseña" });
   }
 });
+
 module.exports = router;

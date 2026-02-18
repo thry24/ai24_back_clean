@@ -4,7 +4,7 @@ const axios = require("axios");
 async function aplicarMarcaAgua(bufferImagen, watermarkUrl) {
   try {
 
-    // 1️⃣ Obtener tamaño de la imagen
+    // 1️⃣ Metadata imagen
     const metadata = await sharp(bufferImagen).metadata();
     const anchoImagen = metadata.width;
 
@@ -15,29 +15,32 @@ async function aplicarMarcaAgua(bufferImagen, watermarkUrl) {
 
     let watermarkBuffer = Buffer.from(response.data);
 
-    // 3️⃣ Convertir watermark a PNG (para respetar transparencias)
+    // 3️⃣ Convertir a PNG + quitar fondo blanco + bajar opacidad
     watermarkBuffer = await sharp(watermarkBuffer)
       .png()
+      .threshold(240)   // detecta blancos
+      .ensureAlpha(0.18)
       .toBuffer();
 
-    // 4️⃣ Redimensionar watermark proporcionalmente
+
+    // 4️⃣ Redimensionar proporcional
     const anchoWatermark = Math.min(
-      Math.floor(anchoImagen * 0.25), // 25% del ancho
-      300
+      Math.floor(anchoImagen * 0.28),
+      350
     );
 
     const watermarkResize = await sharp(watermarkBuffer)
       .resize({ width: anchoWatermark })
+      .blur(0.3)                  // 👈 difuminado leve
       .toBuffer();
 
-    // 5️⃣ Componer imagen con marca centrada
+    // 5️⃣ Componer
     const imagenFinal = await sharp(bufferImagen)
       .composite([
         {
           input: watermarkResize,
-          gravity: "center",   // 👈 AQUÍ va centrado
-          blend: "over",
-          opacity: 0.35        // 👈 transparencia real
+          gravity: "center",
+          blend: "over"
         }
       ])
       .jpeg({ quality: 92 })

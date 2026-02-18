@@ -1215,7 +1215,7 @@ exports.incrementarContacto = async (req, res) => {
     // 🔐 Usuario desde token
     // ===========================
     const user = req.user || {};
-    const rol = (user.rol || 'cliente').toLowerCase(); // cliente | agente
+    const rol = (user.rol || 'cliente').toLowerCase();
 
     const {
       citaNombre,
@@ -1238,7 +1238,7 @@ exports.incrementarContacto = async (req, res) => {
     // 🏠 Propiedad
     // ===========================
     const propiedad = await Propiedad.findById(propiedadId)
-      .populate('agente', 'nombre correo email')
+      .populate('agente', 'nombre correo email _id')
       .lean();
 
     if (!propiedad) {
@@ -1279,17 +1279,44 @@ exports.incrementarContacto = async (req, res) => {
       clienteUser?.rol ||
       rol;
 
+    const textoFinal =
+      citaMensaje || 'Estoy interesado en esta propiedad';
+
     // =========================================================
-    // 🧑‍💼 CASO 1: CONTACTA UN AGENTE → MensajeAgente
+    // 💬 MENSAJE REAL (SIEMPRE SE CREA)
+    // =========================================================
+    const mensaje = await Mensaje.create({
+      emisorEmail: emailContacto,
+      receptorEmail: agenteEmail,
+
+      mensaje: textoFinal,
+      nombreCliente: nombreFinal,
+
+      propiedadId: propiedad._id,
+      propiedadClave: propiedad.clave,
+
+      propiedadSnapshot: {
+        id: propiedad._id,
+        clave: propiedad.clave,
+        imagen: propiedad.imagenPrincipal,
+        precio: propiedad.precio,
+        tipoOperacion: propiedad.tipoOperacion,
+        ubicacion: `${propiedad.direccion?.municipio}, ${propiedad.direccion?.estado}`,
+      },
+    });
+
+    // =========================================================
+    // 🧑‍💼 SI ES AGENTE → crear colaboración
     // =========================================================
     if (rol === 'agente') {
+
       await MensajeAgente.create({
         nombreAgente: propiedad.agente?.nombre,
         emailAgente: agenteEmail,
         nombreCliente: nombreFinal,
         emailCliente: emailContacto,
         telefonoCliente: telefonoFinal,
-        texto: citaMensaje || 'Un agente está interesado en colaborar',
+        texto: textoFinal,
         idPropiedad: propiedad._id,
         imagenPropiedad: propiedad.imagenPrincipal,
         tipoOperacion: propiedad.tipoOperacion,
@@ -1328,7 +1355,7 @@ exports.incrementarContacto = async (req, res) => {
           imagenPropiedad: propiedad.imagenPrincipal,
         });
       } catch (e) {
-        console.error('❌ Error enviando correo de colaboración', e);
+        console.error('Error enviando correo de colaboración', e);
       }
 
       await Notificacion.create({
@@ -1338,14 +1365,13 @@ exports.incrementarContacto = async (req, res) => {
         referenciaId: propiedad._id,
       });
 
-      return res.json({ ok: true, tipo: 'AGENTE' });
+      return res.json({ ok: true, tipo: 'AGENTE', mensaje });
     }
 
     // =========================================================
-    // 👤 CASO 2: CONTACTA UN CLIENTE → Mensaje
+    // 👤 CLIENTE O INMOBILIARIA → Lead + seguimiento
     // =========================================================
 
-    // 🔥 Lead (NO duplicar)
     let lead = await Lead.findOne({
       clienteEmail: emailContacto,
       agenteEmail,
@@ -1361,7 +1387,7 @@ exports.incrementarContacto = async (req, res) => {
         telefono: telefonoFinal,
         rol: clienteUser?.rol || 'cliente',
         tipoCliente: tipoClienteFinal,
-        mensaje: citaMensaje || 'Interesado en la propiedad',
+        mensaje: textoFinal,
         tipoOperacion: propiedad.tipoOperacion,
         ubicacion: `${propiedad.direccion?.municipio}, ${propiedad.direccion?.estado}`,
         origen: 'propiedad',
@@ -1369,28 +1395,6 @@ exports.incrementarContacto = async (req, res) => {
       });
     }
 
-    // 💬 MENSAJE CLIENTE → AGENTE (CHAT REAL)
-    await Mensaje.create({
-      emisorEmail: emailContacto,     // cliente
-      receptorEmail: agenteEmail,     // agente
-
-      mensaje: citaMensaje || 'Estoy interesado en esta propiedad',
-      nombreCliente: nombreFinal,
-
-      propiedadId: propiedad._id,
-      propiedadClave: propiedad.clave,
-
-      propiedadSnapshot: {
-        id: propiedad._id,
-        clave: propiedad.clave,
-        imagen: propiedad.imagenPrincipal,
-        precio: propiedad.precio,
-        tipoOperacion: propiedad.tipoOperacion,
-        ubicacion: `${propiedad.direccion?.municipio}, ${propiedad.direccion?.estado}`,
-      },
-    });
-
-    // 📧 ENVIAR CORREO AL AGENTE
     try {
       await enviarCorreoContactoAgente({
         to: agenteEmail,
@@ -1399,15 +1403,15 @@ exports.incrementarContacto = async (req, res) => {
         tipoCliente: tipoClienteFinal,
         propiedadClave: propiedad.clave,
         imagenPropiedad: propiedad.imagenPrincipal,
-        mensaje: citaMensaje || 'Estoy interesado en esta propiedad',
+        mensaje: textoFinal,
       });
     } catch (e) {
-      console.error('❌ Error enviando correo al agente', e);
+      console.error('Error enviando correo al agente', e);
     }
 
     await Notificacion.create({
       usuarioEmail: agenteEmail,
-      mensaje: `Un cliente te ha contactado por la propiedad ${propiedad.clave}`,
+      mensaje: `Nuevo contacto por la propiedad ${propiedad.clave}`,
       tipo: 'contacto',
       referenciaId: propiedad._id,
     });
@@ -1427,10 +1431,11 @@ exports.incrementarContacto = async (req, res) => {
       tipo: 'CLIENTE',
       lead,
       seguimiento,
+      mensaje,
     });
 
   } catch (err) {
-    console.error('❌ incrementarContacto', err);
+    console.error('incrementarContacto error', err);
     res.status(500).json({ msg: 'Error interno' });
   }
 };

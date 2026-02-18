@@ -37,6 +37,8 @@ const { Server } = require("socket.io");
 const kpisRoutes = require("./routes/kpis.routes");
 const comisionesRoutes = require("./routes/comisiones.routes");
 const documentosSeguimientoRoutes = require('./routes/documentos.routes');
+const chatbotRoutes = require("./routes/chatbot.routes");
+
 
 const app = express();
 app.use(
@@ -93,6 +95,7 @@ app.use("/api/upload", require("./routes/upload.routes"));
 app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 app.use("/api/inmobiliaria", require("./routes/inmobiliaria.routes"));
 app.use('/api/catalogos', require('./routes/catalogos.routes'));
+app.use("/api/chatbot", chatbotRoutes); // ✅ AQUI
 
 
 app.use('/videos', express.static(path.join(__dirname, 'public/videos')));
